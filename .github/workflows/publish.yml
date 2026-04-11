@@ -1,0 +1,74 @@
+name: Publish to npm
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run only (do not publish)'
+        type: boolean
+        default: false
+
+# Security notes:
+# - No user-controlled input (issue/PR/comment/commit text) is used anywhere.
+# - The only external-ish input is the git tag name, which is restricted by
+#   git itself (no shell metacharacters permitted in tag names) and is only
+#   pushable by repo maintainers.
+# - All context expressions are either in `if:` conditions or in `env:` blocks
+#   (never interpolated directly into `run:` scripts), per
+#   https://github.blog/security/vulnerability-research/how-to-catch-github-actions-workflow-injections-before-attackers-do/
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Verify package metadata
+        run: |
+          node -e "
+            const p = require('./package.json');
+            if (!p.name.startsWith('@braedenbuilds/')) {
+              console.error('Refusing to publish: package name is not scoped to @braedenbuilds');
+              process.exit(1);
+            }
+            if (!p.version) {
+              console.error('Refusing to publish: missing version');
+              process.exit(1);
+            }
+            console.log('Package:', p.name, 'v' + p.version);
+          "
+
+      - name: Verify tag matches package.json version
+        if: github.event_name == 'push'
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          TAG_VERSION="${REF_NAME#v}"
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "Tag version ($TAG_VERSION) does not match package.json version ($PKG_VERSION)"
+            exit 1
+          fi
+          echo "Tag and package.json both at $PKG_VERSION"
+
+      - name: Dry-run publish
+        run: npm publish --dry-run
+
+      - name: Publish to npm with provenance
+        if: github.event_name == 'push' || github.event.inputs.dry_run != 'true'
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
