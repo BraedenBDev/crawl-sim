@@ -1,0 +1,28 @@
+{
+  "id": "gptbot",
+  "name": "GPTBot",
+  "vendor": "OpenAI",
+  "userAgent": "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; GPTBot/1.3; +https://openai.com/gptbot",
+  "robotsTxtToken": "GPTBot",
+  "purpose": "training",
+  "rendersJavaScript": false,
+  "respectsRobotsTxt": true,
+  "crawlDelaySupported": "unknown",
+  "ipRangesUrl": "https://openai.com/gptbot.json",
+  "docs": "https://developers.openai.com/api/docs/bots",
+  "confidence": {
+    "rendersJavaScript": {
+      "value": false,
+      "level": "observed",
+      "source": "Multiple third-party tests with JS-only pages show empty content"
+    },
+    "respectsRobotsTxt": {
+      "value": true,
+      "level": "official",
+      "source": "https://developers.openai.com/api/docs/bots"
+    }
+  },
+  "lastVerified": "2026-04-11",
+  "relatedBots": ["oai-searchbot", "chatgpt-user"],
+  "notes": "Disallowing GPTBot indicates a site's content should not be used in training generative AI foundation models."
+}

@@ -1,0 +1,28 @@
+{
+  "id": "googlebot",
+  "name": "Googlebot",
+  "vendor": "Google",
+  "userAgent": "Mozilla/5.0 (Linux; Android 6.0.1; Nexus 5X Build/MMB29P) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/W.X.Y.Z Mobile Safari/537.36 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+  "robotsTxtToken": "Googlebot",
+  "purpose": "search-indexing",
+  "rendersJavaScript": true,
+  "respectsRobotsTxt": true,
+  "crawlDelaySupported": false,
+  "ipRangesUrl": null,
+  "docs": "https://developers.google.com/search/docs/crawling-indexing/javascript/fix-search-javascript",
+  "confidence": {
+    "rendersJavaScript": {
+      "value": true,
+      "level": "official",
+      "source": "https://developers.google.com/search/docs/crawling-indexing/javascript/fix-search-javascript"
+    },
+    "respectsRobotsTxt": {
+      "value": true,
+      "level": "official",
+      "source": "RFC 9309 compliant"
+    }
+  },
+  "lastVerified": "2026-04-11",
+  "relatedBots": [],
+  "notes": "Two-phase: initial fetch (HTML) then queued render (headless Chrome via WRS). Evergreen Chromium. Stateless sessions. ~5s default timeout. Mobile-first indexing."
+}
