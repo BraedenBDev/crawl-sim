@@ -4,3 +4,4 @@ node_modules/
 crawl-sim-report.json
 /tmp/
 .claude/
+.backups/
