@@ -1,95 +1,75 @@
 #!/usr/bin/env bash
 set -eu
-# Note: no pipefail because grep -oiE legitimately returns 1 on no-match
 
 # extract-meta.sh — Extract title, meta, OG, headings, images from HTML
 # Usage: extract-meta.sh [file] | extract-meta.sh < html
-# Output: JSON to stdout
 
-# Read HTML from file arg or stdin
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=_lib.sh
+. "$SCRIPT_DIR/_lib.sh"
+
 if [ $# -ge 1 ] && [ -f "$1" ]; then
   HTML=$(cat "$1")
 else
   HTML=$(cat)
 fi
 
-# Flatten whitespace for regex matching
 HTML_FLAT=$(printf '%s' "$HTML" | tr '\n' ' ' | tr -s ' ')
 
-# Helper: extract attribute value from an attribute-value pattern
-# $1 = the attribute pattern to match (e.g. 'content', 'href')
-# $2 = the tag regex
-grep_tag() {
-  printf '%s' "$HTML_FLAT" | grep -oiE "$1" | head -1 || true
-}
-
-extract_content() {
+# Match a tag by regex, then pull a named attribute value that respects the
+# actual opening quote char. Works for both "…" and '…' quoting.
+# $1 = grep regex to find the tag
+# $2 = attribute name (e.g. "content", "href")
+get_attr() {
+  local tag_regex="$1"
+  local attr="$2"
   local tag
-  tag=$(grep_tag "$1")
+  tag=$(printf '%s' "$HTML_FLAT" | grep -oiE "$tag_regex" | head -1 || true)
   [ -z "$tag" ] && return 0
-  printf '%s' "$tag" | sed -E 's/.*content=["'\''"]([^"'\''"]*)["'\''"].*/\1/i'
-}
-
-extract_href() {
-  local tag
-  tag=$(grep_tag "$1")
-  [ -z "$tag" ] && return 0
-  printf '%s' "$tag" | sed -E 's/.*href=["'\''"]([^"'\''"]*)["'\''"].*/\1/i'
+  # Try double-quoted first, then single-quoted
+  local val
+  val=$(printf '%s' "$tag" | sed -n -E "s/.*${attr}=\"([^\"]*)\".*/\\1/p" | head -1)
+  if [ -z "$val" ]; then
+    val=$(printf '%s' "$tag" | sed -n -E "s/.*${attr}='([^']*)'.*/\\1/p" | head -1)
+  fi
+  printf '%s' "$val"
 }
 
 count_pattern() {
-  printf '%s' "$HTML_FLAT" | grep -ociE "$1" || true
+  local n
+  n=$(printf '%s' "$HTML_FLAT" | grep -oiE "$1" | wc -l | tr -d ' ' || true)
+  printf '%s' "${n:-0}"
 }
 
-# Title
 TITLE_TAG=$(printf '%s' "$HTML_FLAT" | grep -oiE '<title[^>]*>[^<]*</title>' | head -1 || true)
 TITLE=""
 if [ -n "$TITLE_TAG" ]; then
-  TITLE=$(printf '%s' "$TITLE_TAG" | sed -E 's/<title[^>]*>([^<]*)<\/title>/\1/i')
+  TITLE=$(printf '%s' "$TITLE_TAG" | sed -E 's/<title[^>]*>(.*)<\/title>/\1/I')
 fi
 
-# Meta description
-DESCRIPTION=$(extract_content '<meta[^>]*name=["'\''"]description["'\''"][^>]*>')
+DESCRIPTION=$(get_attr '<meta[^>]*name=["'\''"]description["'\''"][^>]*>' 'content')
+OG_TITLE=$(get_attr '<meta[^>]*property=["'\''"]og:title["'\''"][^>]*>' 'content')
+OG_DESCRIPTION=$(get_attr '<meta[^>]*property=["'\''"]og:description["'\''"][^>]*>' 'content')
+OG_IMAGE=$(get_attr '<meta[^>]*property=["'\''"]og:image["'\''"][^>]*>' 'content')
+OG_TYPE=$(get_attr '<meta[^>]*property=["'\''"]og:type["'\''"][^>]*>' 'content')
+TWITTER_CARD=$(get_attr '<meta[^>]*name=["'\''"]twitter:card["'\''"][^>]*>' 'content')
+VIEWPORT=$(get_attr '<meta[^>]*name=["'\''"]viewport["'\''"][^>]*>' 'content')
+CANONICAL=$(get_attr '<link[^>]*rel=["'\''"]canonical["'\''"][^>]*>' 'href')
+LANG_VAL=$(get_attr '<html[^>]*>' 'lang')
 
-# Canonical
-CANONICAL=$(extract_href '<link[^>]*rel=["'\''"]canonical["'\''"][^>]*>')
-
-# OG tags
-OG_TITLE=$(extract_content '<meta[^>]*property=["'\''"]og:title["'\''"][^>]*>')
-OG_DESCRIPTION=$(extract_content '<meta[^>]*property=["'\''"]og:description["'\''"][^>]*>')
-OG_IMAGE=$(extract_content '<meta[^>]*property=["'\''"]og:image["'\''"][^>]*>')
-OG_TYPE=$(extract_content '<meta[^>]*property=["'\''"]og:type["'\''"][^>]*>')
-
-# Twitter card
-TWITTER_CARD=$(extract_content '<meta[^>]*name=["'\''"]twitter:card["'\''"][^>]*>')
-
-# Heading counts
 H1_COUNT=$(count_pattern '<h1[^>]*>')
 H2_COUNT=$(count_pattern '<h2[^>]*>')
 H3_COUNT=$(count_pattern '<h3[^>]*>')
 
-# First H1 text
 H1_TAG=$(printf '%s' "$HTML_FLAT" | grep -oiE '<h1[^>]*>[^<]*</h1>' | head -1 || true)
 H1_TEXT=""
 if [ -n "$H1_TAG" ]; then
-  H1_TEXT=$(printf '%s' "$H1_TAG" | sed -E 's/<h1[^>]*>([^<]*)<\/h1>/\1/i')
+  H1_TEXT=$(printf '%s' "$H1_TAG" | sed -E 's/<h1[^>]*>(.*)<\/h1>/\1/I')
 fi
 
-# Image counts
 IMG_TOTAL=$(count_pattern '<img[^>]*>')
-IMG_WITH_ALT=$(count_pattern '<img[^>]*alt=["'\''"][^"'\''"]*["'\''"][^>]*>')
+IMG_WITH_ALT=$(count_pattern '<img[^>]*alt=("[^"]*"|'\''[^'\'']*'\'')[^>]*>')
 
-# Lang attribute on <html>
-LANG_TAG=$(printf '%s' "$HTML_FLAT" | grep -oiE '<html[^>]*lang=["'\''"][^"'\''"]*["'\''"]' | head -1 || true)
-LANG_VAL=""
-if [ -n "$LANG_TAG" ]; then
-  LANG_VAL=$(printf '%s' "$LANG_TAG" | sed -E 's/.*lang=["'\''"]([^"'\''"]*)["'\''"].*/\1/i')
-fi
-
-# Viewport meta
-VIEWPORT=$(extract_content '<meta[^>]*name=["'\''"]viewport["'\''"][^>]*>')
-
-# Build output JSON
 jq -n \
   --arg title "$TITLE" \
   --arg description "$DESCRIPTION" \

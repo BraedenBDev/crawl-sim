@@ -3,9 +3,11 @@ set -eu
 
 # diff-render.sh — Compare server HTML word count vs JS-rendered word count
 # Usage: diff-render.sh <url>
-# Output: JSON to stdout
-#
 # Requires Playwright. Gracefully outputs { skipped: true } if unavailable.
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=_lib.sh
+. "$SCRIPT_DIR/_lib.sh"
 
 URL="${1:?Usage: diff-render.sh <url>}"
 
@@ -61,11 +63,8 @@ curl -sS -L -A "$UA" -o "$SERVER_HTML" --max-time 30 "$URL" 2>/dev/null || {
   emit_skipped "failed to fetch server HTML"
 }
 
-count_words() {
-  sed 's/<[^>]*>//g' "$1" | tr -s '[:space:]' '\n' | grep -c '[a-zA-Z0-9]' || echo 0
-}
-
 SERVER_WORDS=$(count_words "$SERVER_HTML")
+[ -z "$SERVER_WORDS" ] && SERVER_WORDS=0
 
 # Use Playwright to render and capture the final DOM
 node -e "
@@ -93,6 +92,7 @@ node -e "
 }
 
 RENDERED_WORDS=$(count_words "$RENDERED_HTML")
+[ -z "$RENDERED_WORDS" ] && RENDERED_WORDS=0
 
 # Compute delta percentage (rendered vs server)
 DELTA_PCT=0

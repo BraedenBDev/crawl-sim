@@ -3,17 +3,20 @@ set -eu
 
 # check-sitemap.sh — Fetch sitemap.xml, check URL inclusion and structure
 # Usage: check-sitemap.sh <url>
-# Output: JSON to stdout
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=_lib.sh
+. "$SCRIPT_DIR/_lib.sh"
 
 URL="${1:?Usage: check-sitemap.sh <url>}"
-ORIGIN=$(printf '%s' "$URL" | sed -E 's#(^https?://[^/]+).*#\1#')
+ORIGIN=$(origin_from_url "$URL")
 SITEMAP_URL="${ORIGIN}/sitemap.xml"
 
 TMPDIR="${TMPDIR:-/tmp}"
 SITEMAP_FILE=$(mktemp "$TMPDIR/crawlsim-sitemap.XXXXXX")
 trap 'rm -f "$SITEMAP_FILE"' EXIT
 
-HTTP_STATUS=$(curl -sS -L -o "$SITEMAP_FILE" -w '%{http_code}' --max-time 15 "$SITEMAP_URL" 2>/dev/null || echo "000")
+HTTP_STATUS=$(fetch_to_file "$SITEMAP_URL" "$SITEMAP_FILE")
 
 EXISTS=false
 URL_COUNT=0
