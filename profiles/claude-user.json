@@ -1,0 +1,28 @@
+{
+  "id": "claude-user",
+  "name": "Claude-User",
+  "vendor": "Anthropic",
+  "userAgent": "Claude-User",
+  "robotsTxtToken": "Claude-User",
+  "purpose": "user-initiated",
+  "rendersJavaScript": "unknown",
+  "respectsRobotsTxt": true,
+  "crawlDelaySupported": "unknown",
+  "ipRangesUrl": null,
+  "docs": "https://privacy.claude.com/en/articles/8896518-does-anthropic-crawl-data-from-the-web-and-how-can-site-owners-block-the-crawler",
+  "confidence": {
+    "rendersJavaScript": {
+      "value": "unknown",
+      "level": "inferred",
+      "source": "Not documented by Anthropic"
+    },
+    "respectsRobotsTxt": {
+      "value": true,
+      "level": "official",
+      "source": "Official docs, but notes blocking may reduce visibility for user-directed web search"
+    }
+  },
+  "lastVerified": "2026-04-11",
+  "relatedBots": ["claudebot", "claude-searchbot"],
+  "notes": "When individuals ask questions to Claude, it may access websites. Blocking prevents Claude from retrieving content in response to user queries."
+}

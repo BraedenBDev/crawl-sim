@@ -1,0 +1,28 @@
+{
+  "id": "claudebot",
+  "name": "ClaudeBot",
+  "vendor": "Anthropic",
+  "userAgent": "ClaudeBot",
+  "robotsTxtToken": "ClaudeBot",
+  "purpose": "training",
+  "rendersJavaScript": false,
+  "respectsRobotsTxt": true,
+  "crawlDelaySupported": true,
+  "ipRangesUrl": null,
+  "docs": "https://privacy.claude.com/en/articles/8896518-does-anthropic-crawl-data-from-the-web-and-how-can-site-owners-block-the-crawler",
+  "confidence": {
+    "rendersJavaScript": {
+      "value": false,
+      "level": "observed",
+      "source": "Observational evidence consistent with no JS rendering"
+    },
+    "respectsRobotsTxt": {
+      "value": true,
+      "level": "official",
+      "source": "https://privacy.claude.com"
+    }
+  },
+  "lastVerified": "2026-04-11",
+  "relatedBots": ["claude-user", "claude-searchbot"],
+  "notes": "Collects web content that could potentially contribute to AI model training. Crawl-delay explicitly supported (non-standard). Blocking IP addresses will not reliably work."
+}

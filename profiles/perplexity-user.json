@@ -1,0 +1,28 @@
+{
+  "id": "perplexity-user",
+  "name": "Perplexity-User",
+  "vendor": "Perplexity",
+  "userAgent": "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; Perplexity-User/1.0; +https://perplexity.ai/perplexity-user)",
+  "robotsTxtToken": "Perplexity-User",
+  "purpose": "user-initiated",
+  "rendersJavaScript": "unknown",
+  "respectsRobotsTxt": false,
+  "crawlDelaySupported": "unknown",
+  "ipRangesUrl": "https://www.perplexity.com/perplexity-user.json",
+  "docs": "https://docs.perplexity.ai/docs/resources/perplexity-crawlers",
+  "confidence": {
+    "rendersJavaScript": {
+      "value": "unknown",
+      "level": "inferred",
+      "source": "Not documented by Perplexity"
+    },
+    "respectsRobotsTxt": {
+      "value": false,
+      "level": "official",
+      "source": "Official docs state: 'Since a user requested the fetch, this fetcher generally ignores robots.txt rules.'"
+    }
+  },
+  "lastVerified": "2026-04-11",
+  "relatedBots": ["perplexitybot"],
+  "notes": "Supports user actions within Perplexity. Not used for web crawling or AI training. Generally ignores robots.txt since fetches are user-initiated."
+}
