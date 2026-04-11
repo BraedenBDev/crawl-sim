@@ -36,6 +36,15 @@ jobs:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
 
+      # Node 20 LTS ships with npm 10.8.x. Trusted publishing (OIDC auth)
+      # requires npm >= 11.5.0, so we upgrade the CLI explicitly.
+      # Provenance attestation itself works on npm >= 9.5, but using OIDC
+      # *as the auth credential* is only supported on npm 11.5+.
+      - name: Upgrade npm to latest
+        run: |
+          npm install -g npm@latest
+          npm --version
+
       - name: Verify package metadata
         run: |
           node -e "
