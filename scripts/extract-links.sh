@@ -13,8 +13,10 @@ shift || true
 
 if [ $# -ge 1 ] && [ -f "$1" ]; then
   HTML=$(cat "$1")
+  printf '[extract-links] %s (base: %s)\n' "$1" "$BASE_URL" >&2
 else
   HTML=$(cat)
+  printf '[extract-links] (stdin) (base: %s)\n' "$BASE_URL" >&2
 fi
 
 BASE_HOST=$(host_from_url "$BASE_URL")

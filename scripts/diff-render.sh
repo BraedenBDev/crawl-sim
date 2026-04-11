@@ -10,6 +10,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/_lib.sh"
 
 URL="${1:?Usage: diff-render.sh <url>}"
+printf '[diff-render] comparing server HTML vs Playwright render for %s\n' "$URL" >&2
 
 emit_skipped() {
   local reason="$1"
