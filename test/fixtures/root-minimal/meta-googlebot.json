@@ -1,0 +1,18 @@
+{
+  "title": "Example — Official Site",
+  "description": "Example site for crawl-sim scoring regression tests.",
+  "canonical": "https://example.com/",
+  "og": {
+    "title": "Example — Official Site",
+    "description": "Example site for crawl-sim scoring regression tests.",
+    "image": "https://example.com/og.png"
+  },
+  "headings": {
+    "h1": { "count": 1, "text": "Welcome to Example" },
+    "h2": { "count": 3 }
+  },
+  "images": {
+    "total": 4,
+    "withAlt": 4
+  }
+}
