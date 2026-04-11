@@ -33,12 +33,16 @@ function printHelp() {
   console.log(`
 crawl-sim — Multi-bot visibility audit for Claude Code
 
-Usage:
-  npx @braedenbuilds/crawl-sim install              Install to ~/.claude/skills/crawl-sim/
-  npx @braedenbuilds/crawl-sim install --project    Install to ./.claude/skills/crawl-sim/
-  npx @braedenbuilds/crawl-sim install --dir <path> Install to <path>/crawl-sim/
+Usage (recommended):
+  npm install -g @braedenbuilds/crawl-sim
+  crawl-sim install              Install the skill to ~/.claude/skills/crawl-sim/
+  crawl-sim install --project    Install to ./.claude/skills/crawl-sim/
+  crawl-sim install --dir <path> Install to <path>/crawl-sim/
 
 After installing, invoke in Claude Code with: /crawl-sim <url>
+
+Not using npm? Clone the repo directly:
+  git clone https://github.com/BraedenBDev/crawl-sim.git ~/.claude/skills/crawl-sim
 `);
 }
 
