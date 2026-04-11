@@ -1,0 +1,13 @@
+{
+  "name": "crawl-sim",
+  "version": "0.1.0",
+  "description": "Agent-native multi-bot web crawler simulator. See your site through the eyes of Googlebot, GPTBot, ClaudeBot, and PerplexityBot.",
+  "bin": {
+    "crawl-sim": "./bin/install.js"
+  },
+  "keywords": ["seo", "crawler", "googlebot", "gptbot", "claudebot", "perplexitybot", "ai-visibility", "claude-code", "skill"],
+  "author": "BraedenBDev",
+  "license": "MIT",
+  "repository": { "type": "git", "url": "https://github.com/BraedenBDev/crawl-sim.git" },
+  "files": ["bin/", "SKILL.md", "profiles/", "scripts/", "README.md", "LICENSE"]
+}
