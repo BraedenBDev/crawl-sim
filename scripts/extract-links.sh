@@ -3,60 +3,71 @@ set -eu
 
 # extract-links.sh — Extract and classify internal/external links from HTML
 # Usage: extract-links.sh <base-url> [file] | extract-links.sh <base-url> < html
-# Output: JSON to stdout with counts and sample lists
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=_lib.sh
+. "$SCRIPT_DIR/_lib.sh"
 
 BASE_URL="${1:?Usage: extract-links.sh <base-url> [file]}"
 shift || true
 
-# Read HTML from file or stdin
 if [ $# -ge 1 ] && [ -f "$1" ]; then
   HTML=$(cat "$1")
 else
   HTML=$(cat)
 fi
 
-# Extract base host from URL (e.g. https://example.com/path -> example.com)
-BASE_HOST=$(printf '%s' "$BASE_URL" | sed -E 's#^https?://##' | sed -E 's#/.*$##' | sed -E 's#^www\.##')
-BASE_ORIGIN=$(printf '%s' "$BASE_URL" | sed -E 's#(^https?://[^/]+).*#\1#')
+BASE_HOST=$(host_from_url "$BASE_URL")
+BASE_ORIGIN=$(origin_from_url "$BASE_URL")
+BASE_DIR=$(dir_from_url "$BASE_URL")
 
-# Flatten HTML
 HTML_FLAT=$(printf '%s' "$HTML" | tr '\n' ' ')
 
-# Extract all href values from <a> tags
 TMPDIR="${TMPDIR:-/tmp}"
 HREFS_FILE=$(mktemp "$TMPDIR/crawlsim-hrefs.XXXXXX")
 INTERNAL_FILE=$(mktemp "$TMPDIR/crawlsim-internal.XXXXXX")
 EXTERNAL_FILE=$(mktemp "$TMPDIR/crawlsim-external.XXXXXX")
 trap 'rm -f "$HREFS_FILE" "$INTERNAL_FILE" "$EXTERNAL_FILE"' EXIT
 
-printf '%s' "$HTML_FLAT" \
-  | grep -oiE '<a[[:space:]][^>]*href=["'\''"][^"'\''"]*["'\''"]' \
-  | sed -E 's/.*href=["'\''"]([^"'\''"]*)["'\''"].*/\1/i' \
-  > "$HREFS_FILE" || true
+# Extract hrefs from <a> tags — handle double and single quoting separately.
+{
+  printf '%s' "$HTML_FLAT" \
+    | grep -oiE '<a[[:space:]][^>]*href="[^"]*"' \
+    | sed -E 's/.*href="([^"]*)".*/\1/' || true
+  printf '%s' "$HTML_FLAT" \
+    | grep -oiE "<a[[:space:]][^>]*href='[^']*'" \
+    | sed -E "s/.*href='([^']*)'.*/\\1/" || true
+} > "$HREFS_FILE"
 
-# Classify links
 while IFS= read -r href; do
   [ -z "$href" ] && continue
-  # Skip non-http (mailto, tel, javascript, anchors)
   case "$href" in
     mailto:*|tel:*|javascript:*|"#"*) continue ;;
   esac
 
   if printf '%s' "$href" | grep -qE '^https?://'; then
-    # Absolute URL — check host
-    HREF_HOST=$(printf '%s' "$href" | sed -E 's#^https?://##' | sed -E 's#/.*$##' | sed -E 's#^www\.##')
+    HREF_HOST=$(host_from_url "$href")
     if [ "$HREF_HOST" = "$BASE_HOST" ]; then
       echo "$href" >> "$INTERNAL_FILE"
     else
       echo "$href" >> "$EXTERNAL_FILE"
     fi
-  else
-    # Relative or root-relative — internal
-    if printf '%s' "$href" | grep -qE '^/'; then
-      echo "${BASE_ORIGIN}${href}" >> "$INTERNAL_FILE"
+  elif printf '%s' "$href" | grep -qE '^//'; then
+    # Protocol-relative — inherit base scheme
+    scheme=$(printf '%s' "$BASE_URL" | sed -E 's#^(https?):.*#\1#')
+    abs="${scheme}:${href}"
+    HREF_HOST=$(host_from_url "$abs")
+    if [ "$HREF_HOST" = "$BASE_HOST" ]; then
+      echo "$abs" >> "$INTERNAL_FILE"
     else
-      echo "${BASE_ORIGIN}/${href}" >> "$INTERNAL_FILE"
+      echo "$abs" >> "$EXTERNAL_FILE"
     fi
+  elif printf '%s' "$href" | grep -qE '^/'; then
+    # Root-relative — attach to origin
+    echo "${BASE_ORIGIN}${href}" >> "$INTERNAL_FILE"
+  else
+    # Document-relative — attach to base directory
+    echo "${BASE_DIR}${href}" >> "$INTERNAL_FILE"
   fi
 done < "$HREFS_FILE"
 

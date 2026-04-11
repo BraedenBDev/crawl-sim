@@ -65,7 +65,7 @@ jget() {
   local query="$2"
   local default="${3:-null}"
   if [ -f "$file" ]; then
-    jq -r "$query // \"$default\"" "$file" 2>/dev/null || echo "$default"
+    jq -r --arg d "$default" "$query // \$d" "$file" 2>/dev/null || echo "$default"
   else
     echo "$default"
   fi
@@ -88,7 +88,6 @@ jget_bool() {
   if [ "$v" = "true" ]; then echo "true"; else echo "false"; fi
 }
 
-# Discover bots from fetch-*.json files
 BOTS=""
 for f in "$RESULTS_DIR"/fetch-*.json; do
   [ -f "$f" ] || continue
@@ -101,11 +100,9 @@ if [ -z "$BOTS" ]; then
   exit 1
 fi
 
-# Bot-independent check files
 LLMSTXT_FILE="$RESULTS_DIR/llmstxt.json"
 SITEMAP_FILE="$RESULTS_DIR/sitemap.json"
 
-# Track per-bot JSON output
 BOTS_JSON="{}"
 
 # Accumulators for per-category averages (across bots)

@@ -16,7 +16,9 @@ fi
 # Match <script type="application/ld+json">...</script> across lines
 TMPDIR="${TMPDIR:-/tmp}"
 BLOCKS_FILE=$(mktemp "$TMPDIR/crawlsim-jsonld.XXXXXX")
-trap 'rm -f "$BLOCKS_FILE"' EXIT
+TYPES_FILE=$(mktemp "$TMPDIR/crawlsim-types.XXXXXX")
+VALID_FILE=$(mktemp "$TMPDIR/crawlsim-valid.XXXXXX")
+trap 'rm -f "$BLOCKS_FILE" "$TYPES_FILE" "$VALID_FILE"' EXIT
 
 # Use awk to extract script blocks across lines
 printf '%s' "$HTML" | awk '
@@ -55,11 +57,6 @@ BLOCK_COUNT=$(wc -l < "$BLOCKS_FILE" | tr -d ' ')
 if [ ! -s "$BLOCKS_FILE" ]; then
   BLOCK_COUNT=0
 fi
-
-# Parse each block and collect @type values
-TYPES_FILE=$(mktemp "$TMPDIR/crawlsim-types.XXXXXX")
-VALID_FILE=$(mktemp "$TMPDIR/crawlsim-valid.XXXXXX")
-trap 'rm -f "$BLOCKS_FILE" "$TYPES_FILE" "$VALID_FILE"' EXIT
 
 VALID_COUNT=0
 INVALID_COUNT=0

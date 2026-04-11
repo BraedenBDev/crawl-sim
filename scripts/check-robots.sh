@@ -3,19 +3,18 @@ set -eu
 
 # check-robots.sh — Fetch robots.txt and parse rules for a given UA token
 # Usage: check-robots.sh <url> <ua-token>
-# Output: JSON to stdout
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=_lib.sh
+. "$SCRIPT_DIR/_lib.sh"
 
 URL="${1:?Usage: check-robots.sh <url> <ua-token>}"
 UA_TOKEN="${2:?Usage: check-robots.sh <url> <ua-token>}"
 
-# Derive origin and path from URL
-ORIGIN=$(printf '%s' "$URL" | sed -E 's#(^https?://[^/]+).*#\1#')
-URL_PATH=$(printf '%s' "$URL" | sed -E 's#^https?://[^/]+##')
-[ -z "$URL_PATH" ] && URL_PATH="/"
-
+ORIGIN=$(origin_from_url "$URL")
+URL_PATH=$(path_from_url "$URL")
 ROBOTS_URL="${ORIGIN}/robots.txt"
 
-# Fetch robots.txt
 TMPDIR="${TMPDIR:-/tmp}"
 ROBOTS_FILE=$(mktemp "$TMPDIR/crawlsim-robots.XXXXXX")
 RAW_FILE=$(mktemp "$TMPDIR/crawlsim-robots-raw.XXXXXX")
@@ -24,7 +23,7 @@ ALLOW_PATHS_FILE=$(mktemp "$TMPDIR/crawlsim-allow.XXXXXX")
 SITEMAPS_FILE=$(mktemp "$TMPDIR/crawlsim-sitemaps.XXXXXX")
 trap 'rm -f "$ROBOTS_FILE" "$RAW_FILE" "$DISALLOWED_PATHS_FILE" "$ALLOW_PATHS_FILE" "$SITEMAPS_FILE"' EXIT
 
-HTTP_STATUS=$(curl -sS -L -o "$ROBOTS_FILE" -w '%{http_code}' --max-time 15 "$ROBOTS_URL" 2>/dev/null || echo "000")
+HTTP_STATUS=$(fetch_to_file "$ROBOTS_URL" "$ROBOTS_FILE")
 
 EXISTS=false
 if [ "$HTTP_STATUS" = "200" ] && [ -s "$ROBOTS_FILE" ]; then

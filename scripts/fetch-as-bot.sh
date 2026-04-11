@@ -3,23 +3,23 @@ set -euo pipefail
 
 # fetch-as-bot.sh — Fetch a URL as a specific bot User-Agent
 # Usage: fetch-as-bot.sh <url> <profile.json>
-# Output: JSON to stdout
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=_lib.sh
+. "$SCRIPT_DIR/_lib.sh"
 
 URL="${1:?Usage: fetch-as-bot.sh <url> <profile.json>}"
 PROFILE="${2:?Usage: fetch-as-bot.sh <url> <profile.json>}"
 
-# Read profile fields
 BOT_ID=$(jq -r '.id' "$PROFILE")
 BOT_NAME=$(jq -r '.name' "$PROFILE")
 UA=$(jq -r '.userAgent' "$PROFILE")
 
-# Temp files for headers and body
 TMPDIR="${TMPDIR:-/tmp}"
 HEADERS_FILE=$(mktemp "$TMPDIR/crawlsim-headers.XXXXXX")
 BODY_FILE=$(mktemp "$TMPDIR/crawlsim-body.XXXXXX")
 trap 'rm -f "$HEADERS_FILE" "$BODY_FILE"' EXIT
 
-# Curl with timing, headers, and body capture
 TIMING=$(curl -sS -L \
   -H "User-Agent: $UA" \
   -D "$HEADERS_FILE" \
@@ -33,38 +33,27 @@ TOTAL_TIME=$(echo "$TIMING" | jq -r '.total')
 TTFB=$(echo "$TIMING" | jq -r '.ttfb')
 SIZE=$(echo "$TIMING" | jq -r '.sizeDownload')
 
-# Parse response headers into JSON object
-HEADERS_JSON=$(awk '
-BEGIN { printf "{" }
-/^[A-Za-z]/ {
-  gsub(/\r/, "")
-  split($0, parts, ": ")
-  key = parts[1]
-  val = ""
-  for (i=2; i<=length(parts); i++) {
-    if (i > 2) val = val ": "
-    val = val parts[i]
-  }
-  gsub(/"/, "\\\"", val)
-  if (n++ > 0) printf ","
-  printf "\"%s\":\"%s\"", key, val
-}
-END { printf "}" }
-' "$HEADERS_FILE")
+# Parse response headers into a JSON object using jq for safe escaping.
+# curl -L writes multiple blocks on redirect; jq keeps the last definition
+# of each header since `add` overwrites left-to-right.
+HEADERS_JSON=$(tr -d '\r' < "$HEADERS_FILE" \
+  | grep -E '^[A-Za-z][A-Za-z0-9-]*:[[:space:]]' \
+  | jq -Rs '
+      split("\n")
+      | map(select(length > 0))
+      | map(capture("^(?<k>[^:]+):[[:space:]]*(?<v>.*)$"))
+      | map({(.k): .v})
+      | add // {}
+    ')
 
-# Count words in body (strip HTML tags)
-WORD_COUNT=0
-if [ -s "$BODY_FILE" ]; then
-  WORD_COUNT=$(sed 's/<[^>]*>//g' "$BODY_FILE" | tr -s '[:space:]' '\n' | grep -c '[a-zA-Z0-9]' || true)
-fi
+WORD_COUNT=$(count_words "$BODY_FILE")
+[ -z "$WORD_COUNT" ] && WORD_COUNT=0
 
-# Base64 encode body for safe JSON embedding
 BODY_B64=""
 if [ -s "$BODY_FILE" ]; then
   BODY_B64=$(base64 < "$BODY_FILE")
 fi
 
-# Build output JSON
 jq -n \
   --arg url "$URL" \
   --arg botId "$BOT_ID" \

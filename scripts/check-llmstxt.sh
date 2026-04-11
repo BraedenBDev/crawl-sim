@@ -3,21 +3,18 @@ set -eu
 
 # check-llmstxt.sh — Check for llms.txt and llms-full.txt presence + structure
 # Usage: check-llmstxt.sh <url>
-# Output: JSON to stdout
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=_lib.sh
+. "$SCRIPT_DIR/_lib.sh"
 
 URL="${1:?Usage: check-llmstxt.sh <url>}"
-ORIGIN=$(printf '%s' "$URL" | sed -E 's#(^https?://[^/]+).*#\1#')
+ORIGIN=$(origin_from_url "$URL")
 
 TMPDIR="${TMPDIR:-/tmp}"
 LLMS_FILE=$(mktemp "$TMPDIR/crawlsim-llms.XXXXXX")
 LLMS_FULL_FILE=$(mktemp "$TMPDIR/crawlsim-llms-full.XXXXXX")
 trap 'rm -f "$LLMS_FILE" "$LLMS_FULL_FILE"' EXIT
-
-fetch_file() {
-  local target_url="$1"
-  local out_file="$2"
-  curl -sS -L -o "$out_file" -w '%{http_code}' --max-time 15 "$target_url" 2>/dev/null || echo "000"
-}
 
 analyze_file() {
   local file="$1"
@@ -64,7 +61,7 @@ analyze_file() {
   URL_COUNT="$url_count"
 }
 
-LLMS_STATUS=$(fetch_file "${ORIGIN}/llms.txt" "$LLMS_FILE")
+LLMS_STATUS=$(fetch_to_file "${ORIGIN}/llms.txt" "$LLMS_FILE")
 analyze_file "$LLMS_FILE" "$LLMS_STATUS"
 LLMS_EXISTS=$EXISTS
 LLMS_LINES=$LINE_COUNT
@@ -73,7 +70,7 @@ LLMS_TITLE=$TITLE
 LLMS_HAS_DESC=$HAS_DESCRIPTION
 LLMS_URLS=$URL_COUNT
 
-LLMS_FULL_STATUS=$(fetch_file "${ORIGIN}/llms-full.txt" "$LLMS_FULL_FILE")
+LLMS_FULL_STATUS=$(fetch_to_file "${ORIGIN}/llms-full.txt" "$LLMS_FULL_FILE")
 analyze_file "$LLMS_FULL_FILE" "$LLMS_FULL_STATUS"
 LLMS_FULL_EXISTS=$EXISTS
 LLMS_FULL_LINES=$LINE_COUNT
