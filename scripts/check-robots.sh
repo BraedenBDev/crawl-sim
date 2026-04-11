@@ -11,6 +11,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 URL="${1:?Usage: check-robots.sh <url> <ua-token>}"
 UA_TOKEN="${2:?Usage: check-robots.sh <url> <ua-token>}"
 
+printf '[check-robots] %s for %s\n' "$URL" "$UA_TOKEN" >&2
+
 ORIGIN=$(origin_from_url "$URL")
 URL_PATH=$(path_from_url "$URL")
 ROBOTS_URL="${ORIGIN}/robots.txt"

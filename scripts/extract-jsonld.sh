@@ -8,8 +8,10 @@ set -eu
 # Read HTML from file or stdin
 if [ $# -ge 1 ] && [ -f "$1" ]; then
   HTML=$(cat "$1")
+  printf '[extract-jsonld] %s\n' "$1" >&2
 else
   HTML=$(cat)
+  printf '[extract-jsonld] (stdin)\n' >&2
 fi
 
 # Extract JSON-LD blocks into a temp file (one block per line, flattened)

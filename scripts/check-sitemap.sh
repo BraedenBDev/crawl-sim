@@ -9,6 +9,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/_lib.sh"
 
 URL="${1:?Usage: check-sitemap.sh <url>}"
+printf '[check-sitemap] %s\n' "$URL" >&2
 ORIGIN=$(origin_from_url "$URL")
 SITEMAP_URL="${ORIGIN}/sitemap.xml"
 
