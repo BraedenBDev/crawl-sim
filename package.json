@@ -1,13 +1,46 @@
 {
-  "name": "crawl-sim",
-  "version": "0.1.0",
+  "name": "@braedenbuilds/crawl-sim",
+  "version": "1.0.1",
   "description": "Agent-native multi-bot web crawler simulator. See your site through the eyes of Googlebot, GPTBot, ClaudeBot, and PerplexityBot.",
   "bin": {
-    "crawl-sim": "./bin/install.js"
+    "crawl-sim": "bin/install.js"
   },
-  "keywords": ["seo", "crawler", "googlebot", "gptbot", "claudebot", "perplexitybot", "ai-visibility", "claude-code", "skill"],
+  "keywords": [
+    "seo",
+    "crawler",
+    "googlebot",
+    "gptbot",
+    "claudebot",
+    "perplexitybot",
+    "ai-visibility",
+    "ai-seo",
+    "geo",
+    "llms-txt",
+    "claude-code",
+    "claude-code-skill"
+  ],
   "author": "BraedenBDev",
   "license": "MIT",
-  "repository": { "type": "git", "url": "https://github.com/BraedenBDev/crawl-sim.git" },
-  "files": ["bin/", "SKILL.md", "profiles/", "scripts/", "README.md", "LICENSE"]
+  "homepage": "https://github.com/BraedenBDev/crawl-sim#readme",
+  "bugs": {
+    "url": "https://github.com/BraedenBDev/crawl-sim/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/BraedenBDev/crawl-sim.git"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "bin/",
+    "SKILL.md",
+    "profiles/",
+    "scripts/",
+    "README.md",
+    "LICENSE"
+  ]
 }

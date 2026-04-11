@@ -3,7 +3,7 @@
 **See your site through the eyes of Googlebot, GPTBot, ClaudeBot, and PerplexityBot.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
-[![npm version](https://img.shields.io/badge/npm-v0.1.0-blue.svg)](https://www.npmjs.com/package/crawl-sim)
+[![npm version](https://img.shields.io/npm/v/@braedenbuilds/crawl-sim.svg)](https://www.npmjs.com/package/@braedenbuilds/crawl-sim)
 [![Built for Claude Code](https://img.shields.io/badge/built%20for-Claude%20Code-D97757.svg)](https://claude.com/claude-code)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
 
@@ -47,8 +47,8 @@ The concept was validated manually: a curl-as-GPTBot + Claude analysis caught a 
 ### In Claude Code (recommended)
 
 ```bash
-npx crawl-sim install              # installs to ~/.claude/skills/crawl-sim/
-npx crawl-sim install --project    # installs to ./.claude/skills/crawl-sim/
+npx @braedenbuilds/crawl-sim install              # installs to ~/.claude/skills/crawl-sim/
+npx @braedenbuilds/crawl-sim install --project    # installs to ./.claude/skills/crawl-sim/
 ```
 
 Then in Claude Code:
@@ -58,6 +58,8 @@ Then in Claude Code:
 ```
 
 Claude runs the full pipeline, interprets the results, and returns a score card plus prioritized findings.
+
+> The installed `crawl-sim` bin command is available after `npm install -g @braedenbuilds/crawl-sim` if you prefer a persistent install over `npx`.
 
 ### As a standalone CLI
 
