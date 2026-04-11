@@ -47,8 +47,9 @@ The concept was validated manually: a curl-as-GPTBot + Claude analysis caught a 
 ### In Claude Code (recommended)
 
 ```bash
-npx @braedenbuilds/crawl-sim install              # installs to ~/.claude/skills/crawl-sim/
-npx @braedenbuilds/crawl-sim install --project    # installs to ./.claude/skills/crawl-sim/
+npm install -g @braedenbuilds/crawl-sim
+crawl-sim install              # → ~/.claude/skills/crawl-sim/
+crawl-sim install --project    # → .claude/skills/crawl-sim/
 ```
 
 Then in Claude Code:
@@ -59,7 +60,7 @@ Then in Claude Code:
 
 Claude runs the full pipeline, interprets the results, and returns a score card plus prioritized findings.
 
-> The installed `crawl-sim` bin command is available after `npm install -g @braedenbuilds/crawl-sim` if you prefer a persistent install over `npx`.
+> **Why `npm install -g` instead of `npx`?** Recent versions of npx have a [known issue](https://github.com/npm/cli/issues) linking bins for scoped single-bin packages in ephemeral installs. A persistent global install avoids the problem entirely. If you want a one-shot install without touching global state, the tarball URL form also works: `npx https://registry.npmjs.org/@braedenbuilds/crawl-sim/-/crawl-sim-1.0.3.tgz install`.
 
 ### As a standalone CLI
 
@@ -67,6 +68,12 @@ Claude runs the full pipeline, interprets the results, and returns a score card 
 git clone https://github.com/BraedenBDev/crawl-sim.git
 cd crawl-sim
 ./scripts/fetch-as-bot.sh https://yoursite.com profiles/gptbot.json | jq .
+```
+
+You can also clone directly into the Claude Code skills directory:
+
+```bash
+git clone https://github.com/BraedenBDev/crawl-sim.git ~/.claude/skills/crawl-sim
 ```
 
 ### Prerequisites
