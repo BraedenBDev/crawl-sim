@@ -67,8 +67,11 @@ jobs:
       - name: Dry-run publish
         run: npm publish --dry-run
 
-      - name: Publish to npm with provenance
+      # Authenticates via OIDC Trusted Publishing (configured on npmjs.com
+      # under the package's "Access" → "Trusted Publisher" settings).
+      # No NPM_TOKEN required — npm verifies the GitHub OIDC token against
+      # the trusted publisher config directly. `id-token: write` permission
+      # above is what makes this work.
+      - name: Publish to npm with provenance (via OIDC)
         if: github.event_name == 'push' || github.event.inputs.dry_run != 'true'
         run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
