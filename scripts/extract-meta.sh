@@ -10,8 +10,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 if [ $# -ge 1 ] && [ -f "$1" ]; then
   HTML=$(cat "$1")
+  printf '[extract-meta] %s\n' "$1" >&2
 else
   HTML=$(cat)
+  printf '[extract-meta] (stdin)\n' >&2
 fi
 
 HTML_FLAT=$(printf '%s' "$HTML" | tr '\n' ' ' | tr -s ' ')

@@ -14,6 +14,9 @@ PROFILE="${2:?Usage: fetch-as-bot.sh <url> <profile.json>}"
 BOT_ID=$(jq -r '.id' "$PROFILE")
 BOT_NAME=$(jq -r '.name' "$PROFILE")
 UA=$(jq -r '.userAgent' "$PROFILE")
+RENDERS_JS=$(jq -r '.rendersJavaScript' "$PROFILE")
+
+printf '[fetch-as-bot] %s <- %s\n' "$BOT_NAME" "$URL" >&2
 
 TMPDIR="${TMPDIR:-/tmp}"
 HEADERS_FILE=$(mktemp "$TMPDIR/crawlsim-headers.XXXXXX")
@@ -59,6 +62,7 @@ jq -n \
   --arg botId "$BOT_ID" \
   --arg botName "$BOT_NAME" \
   --arg ua "$UA" \
+  --arg rendersJs "$RENDERS_JS" \
   --argjson status "$STATUS" \
   --argjson totalTime "$TOTAL_TIME" \
   --argjson ttfb "$TTFB" \
@@ -68,7 +72,12 @@ jq -n \
   --arg bodyBase64 "$BODY_B64" \
   '{
     url: $url,
-    bot: { id: $botId, name: $botName, userAgent: $ua },
+    bot: {
+      id: $botId,
+      name: $botName,
+      userAgent: $ua,
+      rendersJavaScript: (if $rendersJs == "true" then true elif $rendersJs == "false" then false else $rendersJs end)
+    },
     status: $status,
     timing: { total: $totalTime, ttfb: $ttfb },
     size: $size,

@@ -16,6 +16,7 @@ set -eu
 #   diff-render.json         — diff-render.sh output (optional, Googlebot only)
 
 RESULTS_DIR="${1:?Usage: compute-score.sh <results-dir>}"
+printf '[compute-score] aggregating %s\n' "$RESULTS_DIR" >&2
 
 if [ ! -d "$RESULTS_DIR" ]; then
   echo "Error: results dir not found: $RESULTS_DIR" >&2
@@ -102,6 +103,23 @@ fi
 
 LLMSTXT_FILE="$RESULTS_DIR/llmstxt.json"
 SITEMAP_FILE="$RESULTS_DIR/sitemap.json"
+DIFF_RENDER_FILE="$RESULTS_DIR/diff-render.json"
+
+# Load Playwright render-delta data once (used to differentiate JS-rendering
+# bots from non-rendering ones). If the comparison was skipped or missing,
+# all bots score against server HTML only.
+DIFF_AVAILABLE=false
+DIFF_RENDERED_WORDS=0
+DIFF_DELTA_PCT=0
+if [ -f "$DIFF_RENDER_FILE" ]; then
+  # Explicit null check — `.skipped // true` would treat real false as null.
+  DIFF_SKIPPED=$(jq -r '.skipped | if . == null then "true" else tostring end' "$DIFF_RENDER_FILE" 2>/dev/null || echo "true")
+  if [ "$DIFF_SKIPPED" = "false" ]; then
+    DIFF_AVAILABLE=true
+    DIFF_RENDERED_WORDS=$(jq -r '.renderedWordCount // 0' "$DIFF_RENDER_FILE")
+    DIFF_DELTA_PCT=$(jq -r '.deltaPct // 0' "$DIFF_RENDER_FILE")
+  fi
+fi
 
 BOTS_JSON="{}"
 
@@ -127,9 +145,40 @@ for bot_id in $BOTS; do
   BOT_NAME=$(jget "$FETCH" '.bot.name' "$bot_id")
   STATUS=$(jget_num "$FETCH" '.status')
   TOTAL_TIME=$(jget_num "$FETCH" '.timing.total')
-  WORD_COUNT=$(jget_num "$FETCH" '.wordCount')
+  SERVER_WORD_COUNT=$(jget_num "$FETCH" '.wordCount')
+  # Read with explicit null fallback — jq's `//` is unsafe here because it
+  # treats boolean false as falsy, which is exactly the value we need to see.
+  RENDERS_JS=$(jq -r '.bot.rendersJavaScript | if . == null then "unknown" else tostring end' "$FETCH" 2>/dev/null || echo "unknown")
 
   ROBOTS_ALLOWED=$(jget_bool "$ROBOTS" '.allowed')
+
+  # Effective word count depends on JS rendering capability:
+  # - true (e.g. Googlebot) + diff-render data → rendered DOM word count
+  # - false (AI training/search bots, observed) → server HTML only, with
+  #   penalty proportional to the rendering delta
+  # - unknown → conservative: server HTML (same as false but no penalty)
+  EFFECTIVE_WORD_COUNT=$SERVER_WORD_COUNT
+  HYDRATION_PENALTY=0
+  MISSED_WORDS=0
+  if [ "$DIFF_AVAILABLE" = "true" ]; then
+    if [ "$RENDERS_JS" = "true" ]; then
+      EFFECTIVE_WORD_COUNT=$DIFF_RENDERED_WORDS
+    elif [ "$RENDERS_JS" = "false" ]; then
+      # Absolute-value delta: if rendered DOM has materially more than server,
+      # AI bots are missing that content.
+      ABS_DELTA=$(awk -v d="$DIFF_DELTA_PCT" 'BEGIN { printf "%d", (d < 0 ? -d : d) + 0.5 }')
+      if [ "$ABS_DELTA" -gt 5 ]; then
+        # Scale penalty: 5% delta = 0, 10% = 5, 20%+ = 15 (cap)
+        HYDRATION_PENALTY=$(awk -v d="$ABS_DELTA" 'BEGIN {
+          p = (d - 5)
+          if (p > 15) p = 15
+          printf "%d", p
+        }')
+      fi
+      MISSED_WORDS=$((DIFF_RENDERED_WORDS - SERVER_WORD_COUNT))
+      [ "$MISSED_WORDS" -lt 0 ] && MISSED_WORDS=0
+    fi
+  fi
 
   # --- Category 1: Accessibility (0-100) ---
   ACC=0
@@ -143,10 +192,9 @@ for bot_id in $BOTS; do
 
   # --- Category 2: Content Visibility (0-100) ---
   CONTENT=0
-  # Word count
-  if [ "$WORD_COUNT" -ge 300 ]; then CONTENT=$((CONTENT + 30))
-  elif [ "$WORD_COUNT" -ge 150 ]; then CONTENT=$((CONTENT + 20))
-  elif [ "$WORD_COUNT" -ge 50 ]; then CONTENT=$((CONTENT + 10))
+  if [ "$EFFECTIVE_WORD_COUNT" -ge 300 ]; then CONTENT=$((CONTENT + 30))
+  elif [ "$EFFECTIVE_WORD_COUNT" -ge 150 ]; then CONTENT=$((CONTENT + 20))
+  elif [ "$EFFECTIVE_WORD_COUNT" -ge 50 ]; then CONTENT=$((CONTENT + 10))
   fi
 
   H1_COUNT=$(jget_num "$META" '.headings.h1.count')
@@ -167,6 +215,10 @@ for bot_id in $BOTS; do
     ALT_SCORE=$(awk -v a="$IMG_WITH_ALT" -v t="$IMG_TOTAL" 'BEGIN { printf "%d", (a / t) * 15 }')
     CONTENT=$((CONTENT + ALT_SCORE))
   fi
+
+  # Apply hydration penalty for non-rendering bots that are missing content
+  CONTENT=$((CONTENT - HYDRATION_PENALTY))
+  [ $CONTENT -lt 0 ] && CONTENT=0
 
   # --- Category 3: Structured Data (0-100) ---
   STRUCTURED=0
@@ -227,8 +279,8 @@ for bot_id in $BOTS; do
     [ "$LLMS_HAS_DESC" = "true" ] && AI=$((AI + 7))
     [ "$LLMS_URLS" -ge 1 ] && AI=$((AI + 6))
   fi
-  # Content citable (>= 200 words)
-  [ "$WORD_COUNT" -ge 200 ] && AI=$((AI + 20))
+  # Content citable (>= 200 words, effective for this bot)
+  [ "$EFFECTIVE_WORD_COUNT" -ge 200 ] && AI=$((AI + 20))
   # Semantic clarity: has H1 + description
   if [ "$H1_COUNT" -ge 1 ] && [ -n "$DESCRIPTION" ] && [ "$DESCRIPTION" != "null" ]; then
     AI=$((AI + 20))
@@ -253,10 +305,10 @@ for bot_id in $BOTS; do
   TECHNICAL_GRADE=$(grade_for "$TECHNICAL")
   AI_GRADE=$(grade_for "$AI")
 
-  # Build bot object
   BOT_OBJ=$(jq -n \
     --arg id "$bot_id" \
     --arg name "$BOT_NAME" \
+    --arg rendersJs "$RENDERS_JS" \
     --argjson score "$BOT_SCORE" \
     --arg grade "$BOT_GRADE" \
     --argjson acc "$ACC" \
@@ -269,11 +321,22 @@ for bot_id in $BOTS; do
     --arg technicalGrade "$TECHNICAL_GRADE" \
     --argjson ai "$AI" \
     --arg aiGrade "$AI_GRADE" \
+    --argjson serverWords "$SERVER_WORD_COUNT" \
+    --argjson effectiveWords "$EFFECTIVE_WORD_COUNT" \
+    --argjson missedWords "$MISSED_WORDS" \
+    --argjson hydrationPenalty "$HYDRATION_PENALTY" \
     '{
       id: $id,
       name: $name,
+      rendersJavaScript: (if $rendersJs == "true" then true elif $rendersJs == "false" then false else $rendersJs end),
       score: $score,
       grade: $grade,
+      visibility: {
+        serverWords: $serverWords,
+        effectiveWords: $effectiveWords,
+        missedWordsVsRendered: $missedWords,
+        hydrationPenaltyPts: $hydrationPenalty
+      },
       categories: {
         accessibility:     { score: $acc,        grade: $accGrade },
         contentVisibility: { score: $content,    grade: $contentGrade },
