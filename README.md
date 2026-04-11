@@ -60,7 +60,7 @@ Then in Claude Code:
 
 Claude runs the full pipeline, interprets the results, and returns a score card plus prioritized findings.
 
-> **Why `npm install -g` instead of `npx`?** Recent versions of npx have a [known issue](https://github.com/npm/cli/issues) linking bins for scoped single-bin packages in ephemeral installs. A persistent global install avoids the problem entirely. If you want a one-shot install without touching global state, the tarball URL form also works: `npx https://registry.npmjs.org/@braedenbuilds/crawl-sim/-/crawl-sim-1.0.3.tgz install`.
+> **Why `npm install -g` instead of `npx`?** Recent versions of npx have a known issue linking bins for scoped single-bin packages in ephemeral installs. A persistent global install avoids the problem entirely. The git clone path below is the zero-npm fallback.
 
 ### As a standalone CLI
 
