@@ -9,23 +9,23 @@
 
 ### Wave 1 — Quick Wins
 
-- [ ] AC-1: `.github/workflows/publish.yml` uses `actions/checkout@v5` and `actions/setup-node@v5`
-- [ ] AC-2: SKILL.md Stage 1 fetches run in parallel (`&` + `wait`) with serial retry fallback
-- [ ] AC-3: `compute-score.sh` per-bot jq calls batched (~34 → ~10); golden file still passes
+- [x] AC-1: `.github/workflows/publish.yml` uses `actions/checkout@v5` and `actions/setup-node@v5`
+- [x] AC-2: SKILL.md Stage 1 fetches run in parallel (`&` + `wait`) with serial retry fallback
+- [x] AC-3: `compute-score.sh` per-bot jq calls batched (~34 → ~10); golden file still passes
 
 ### Wave 2 — Sprint 3 Polish
 
-- [ ] AC-4: `check-llmstxt.sh` emits top-level `exists` field (true if either variant exists)
-- [ ] AC-5: `check-sitemap.sh` emits `sampleUrls` array (first 10 `<loc>` values)
-- [ ] AC-6: `extract-links.sh` uses flat schema (`total`, `internal`, `external`, `internalUrls`, `externalUrls`)
-- [ ] AC-7: `docs/output-schemas.md` documents JSON contract for all 9 scripts
-- [ ] AC-8: `build-report.sh` consolidates score + raw data into single `crawl-sim-report.json`
+- [x] AC-4: `check-llmstxt.sh` emits top-level `exists` field (true if either variant exists)
+- [x] AC-5: `check-sitemap.sh` emits `sampleUrls` array (first 10 `<loc>` values)
+- [x] AC-6: `extract-links.sh` uses flat schema (`total`, `internal`, `external`, `internalUrls`, `externalUrls`)
+- [x] AC-7: `docs/output-schemas.md` documents JSON contract for all 9 scripts
+- [x] AC-8: `build-report.sh` consolidates score + raw data into single `crawl-sim-report.json`
 
 ### Wave 3 — Sprint 4 Roadmap
 
-- [ ] AC-9: SKILL.md has parity-aware display guidance (collapse bot rows when parity ≥ 95)
-- [ ] AC-10: Robots-blocked bots get 0/F on accessibility (critical-fail override)
-- [ ] AC-11: Violations carry `confidence` field (`high`/`medium`/`low`)
+- [x] AC-9: SKILL.md has parity-aware display guidance (collapse bot rows when parity ≥ 95)
+- [x] AC-10: Robots-blocked bots get 0/F on accessibility (critical-fail override)
+- [x] AC-11: Violations carry `confidence` field (`high`/`medium`/`low`)
 
 ## Files expected to change
 
