@@ -237,6 +237,18 @@ else
   fail "redirectChain field missing from fetch output"
 fi
 
+# ----- Sprint B: H2 diff-render warning (AC-B5) -----
+
+case_begin "AC-B5: missing diff-render.json emits a warning"
+if OUT=$(run_score root-minimal 2>/dev/null); then
+  WARNINGS_EXIST=$(printf '%s' "$OUT" | jq 'has("warnings")')
+  WARN_COUNT=$(printf '%s' "$OUT" | jq '[.warnings[]? | select(.code=="diff_render_unavailable")] | length')
+  assert_eq "$WARNINGS_EXIST" "true" "warnings array exists in output"
+  assert_eq "$WARN_COUNT" "1" "diff_render_unavailable warning emitted when diff-render.json absent"
+else
+  fail "compute-score.sh exited non-zero on root-minimal"
+fi
+
 # ----- Summary -----
 
 printf '\n================================================\n'
