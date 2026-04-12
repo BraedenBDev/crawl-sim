@@ -91,7 +91,31 @@ run_score() {
   "$COMPUTE_SCORE" "$@" "$fx"
 }
 
-# ----- Test cases -----
+# ----- Unit tests: page_type_for_url (AC1 table) -----
+
+# shellcheck source=../scripts/_lib.sh
+. "$REPO_ROOT/scripts/_lib.sh"
+
+case_begin "AC1 unit: page_type_for_url classifies URL patterns"
+assert_eq "$(page_type_for_url 'https://example.com/')"                  "root"    "apex root"
+assert_eq "$(page_type_for_url 'https://example.com')"                   "root"    "apex no trailing slash"
+assert_eq "$(page_type_for_url 'https://www.example.com/?utm=abc')"      "root"    "apex with query"
+assert_eq "$(page_type_for_url 'https://example.com/work')"              "archive" "/work terminal"
+assert_eq "$(page_type_for_url 'https://example.com/work/')"             "archive" "/work/ trailing slash"
+assert_eq "$(page_type_for_url 'https://example.com/journal')"           "archive" "/journal terminal"
+assert_eq "$(page_type_for_url 'https://example.com/work/cool-project')" "detail"  "/work/:slug"
+assert_eq "$(page_type_for_url 'https://example.com/blog/post-name')"    "detail"  "/blog/:slug"
+assert_eq "$(page_type_for_url 'https://example.com/articles/my-story')" "detail"  "/articles/:slug"
+assert_eq "$(page_type_for_url 'https://example.com/faq')"               "faq"     "/faq"
+assert_eq "$(page_type_for_url 'https://example.com/help/faq')"          "faq"     "nested faq"
+assert_eq "$(page_type_for_url 'https://example.com/about')"             "about"   "/about"
+assert_eq "$(page_type_for_url 'https://example.com/about-us')"          "about"   "/about-us"
+assert_eq "$(page_type_for_url 'https://example.com/team')"              "about"   "/team"
+assert_eq "$(page_type_for_url 'https://example.com/contact')"           "contact" "/contact"
+assert_eq "$(page_type_for_url 'https://example.com/get-in-touch')"      "generic" "generic fallback"
+assert_eq "$(page_type_for_url 'https://example.com/services/seo')"      "generic" "unknown section"
+
+# ----- Integration tests: compute-score.sh -----
 
 case_begin "AC1+AC4: root URL auto-detects root, Org+WebSite scores 100"
 if OUT=$(run_score root-minimal 2>/dev/null); then
@@ -107,6 +131,27 @@ if OUT=$(run_score root-minimal 2>/dev/null); then
   assert_eq "$SCORE" "100" "structuredData score for root with canonical root set"
   assert_eq "$MISSING_LEN" "0" "no missing expected schemas"
   assert_eq "$VIOLATIONS_LEN" "0" "no violations"
+else
+  fail "compute-score.sh exited non-zero on root-minimal"
+fi
+
+case_begin "AC9: non-structured categories unchanged vs baseline golden"
+GOLDEN="$SCRIPT_DIR/fixtures/root-minimal/golden-non-structured.json"
+if OUT=$(run_score root-minimal 2>/dev/null); then
+  ACTUAL=$(printf '%s' "$OUT" | jq '{
+    accessibility:     .bots.googlebot.categories.accessibility,
+    contentVisibility: .bots.googlebot.categories.contentVisibility,
+    technicalSignals:  .bots.googlebot.categories.technicalSignals,
+    aiReadiness:       .bots.googlebot.categories.aiReadiness,
+    visibility:        .bots.googlebot.visibility
+  }')
+  EXPECTED=$(jq '.' "$GOLDEN")
+  if [ "$ACTUAL" = "$EXPECTED" ]; then
+    pass "non-structured categories byte-match golden baseline"
+  else
+    fail "non-structured categories drifted from golden baseline"
+    printf 'expected:\n%s\nactual:\n%s\n' "$EXPECTED" "$ACTUAL" >&2
+  fi
 else
   fail "compute-score.sh exited non-zero on root-minimal"
 fi
