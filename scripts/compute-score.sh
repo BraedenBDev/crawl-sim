@@ -276,6 +276,40 @@ for bot_id in $BOTS; do
   ROBOTS="$RESULTS_DIR/robots-$bot_id.json"
 
   BOT_NAME=$(jget "$FETCH" '.bot.name' "$bot_id")
+
+  # Check for fetch failure — skip scoring, emit F grade (AC-A3)
+  FETCH_FAILED=$(jget_bool "$FETCH" '.fetchFailed')
+  if [ "$FETCH_FAILED" = "true" ]; then
+    FETCH_ERROR=$(jget "$FETCH" '.error' "unknown error")
+    RENDERS_JS=$(jq -r '.bot.rendersJavaScript | if . == null then "unknown" else tostring end' "$FETCH" 2>/dev/null || echo "unknown")
+    BOT_OBJ=$(jq -n \
+      --arg id "$bot_id" \
+      --arg name "$BOT_NAME" \
+      --arg rendersJs "$RENDERS_JS" \
+      --arg error "$FETCH_ERROR" \
+      '{
+        id: $id,
+        name: $name,
+        rendersJavaScript: (if $rendersJs == "true" then true elif $rendersJs == "false" then false else $rendersJs end),
+        fetchFailed: true,
+        error: $error,
+        score: 0,
+        grade: "F",
+        visibility: { serverWords: 0, effectiveWords: 0, missedWordsVsRendered: 0, hydrationPenaltyPts: 0 },
+        categories: {
+          accessibility:     { score: 0, grade: "F" },
+          contentVisibility: { score: 0, grade: "F" },
+          structuredData:    { score: 0, grade: "F", pageType: "unknown", expected: [], optional: [], forbidden: [], present: [], missing: [], extras: [], violations: [{ kind: "fetch_failed", impact: -100 }], calculation: "fetch failed — no data to score", notes: ("Fetch failed: " + $error) },
+          technicalSignals:  { score: 0, grade: "F" },
+          aiReadiness:       { score: 0, grade: "F" }
+        }
+      }')
+    BOTS_JSON=$(printf '%s' "$BOTS_JSON" | jq --argjson bot "$BOT_OBJ" --arg id "$bot_id" '.[$id] = $bot')
+    printf '[compute-score] %s: fetch failed, scoring as F\n' "$bot_id" >&2
+    CAT_N=$((CAT_N + 1))
+    continue
+  fi
+
   STATUS=$(jget_num "$FETCH" '.status')
   TOTAL_TIME=$(jget_num "$FETCH" '.timing.total')
   SERVER_WORD_COUNT=$(jget_num "$FETCH" '.wordCount')
