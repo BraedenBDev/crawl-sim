@@ -237,6 +237,26 @@ else
   fail "redirectChain field missing from fetch output"
 fi
 
+# ----- Sprint B: C3 field validation (AC-B1, AC-B2) -----
+
+case_begin "AC-B2: schemas present but missing required fields get validity penalty"
+if OUT=$(run_score root-invalid-fields 2>/dev/null); then
+  SCORE=$(printf '%s' "$OUT" | jq -r '.bots.googlebot.categories.structuredData.score')
+  VIOLATIONS=$(printf '%s' "$OUT" | jq '[.bots.googlebot.categories.structuredData.violations[] | select(.kind=="missing_required_field")] | length')
+  assert_lt "$SCORE" "100" "missing required fields reduce score below 100"
+  assert_ge "$VIOLATIONS" "1" "at least one missing_required_field violation"
+else
+  fail "compute-score.sh exited non-zero on root-invalid-fields"
+fi
+
+case_begin "AC-B1+B2: root-minimal with valid schemas has no field violations"
+if OUT=$(run_score root-minimal 2>/dev/null); then
+  FIELD_VIOLATIONS=$(printf '%s' "$OUT" | jq '[.bots.googlebot.categories.structuredData.violations[] | select(.kind=="missing_required_field")] | length')
+  assert_eq "$FIELD_VIOLATIONS" "0" "no missing_required_field violations for valid schemas"
+else
+  fail "compute-score.sh exited non-zero on root-minimal"
+fi
+
 # ----- Sprint B: C4 cross-bot parity (AC-B3, AC-B4) -----
 
 case_begin "AC-B4: cross-bot parity — high divergence (10x word count) scores low"
