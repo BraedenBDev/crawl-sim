@@ -5,3 +5,17 @@ crawl-sim-report.json
 /tmp/
 .claude/
 .backups/
+
+# Secrets / credentials — defensive patterns
+.env
+.env.*
+.env.local
+.env.production
+*.pem
+*.key
+*.p12
+*.pfx
+*.cert
+credentials*
+secrets*
+*.log
