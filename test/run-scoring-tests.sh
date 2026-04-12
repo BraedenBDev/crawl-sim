@@ -216,6 +216,27 @@ else
   fail "compute-score.sh exited non-zero on fetch-failed fixture"
 fi
 
+# ----- Sprint B: H3 redirect chain (AC-B6) -----
+
+case_begin "AC-B6: fetch-as-bot.sh output includes redirect fields"
+# Test against an actual fetch to verify the shape includes new fields.
+# We invoke fetch-as-bot.sh against httpbin which reliably returns 200.
+REDIRECT_TEST_OUT=$("$REPO_ROOT/scripts/fetch-as-bot.sh" "https://httpbin.org/get" "$REPO_ROOT/profiles/googlebot.json" 2>/dev/null || echo '{}')
+REDIRECT_COUNT=$(printf '%s' "$REDIRECT_TEST_OUT" | jq -r '.redirectCount // "missing"')
+FINAL_URL=$(printf '%s' "$REDIRECT_TEST_OUT" | jq -r '.finalUrl // "missing"')
+REDIRECT_CHAIN=$(printf '%s' "$REDIRECT_TEST_OUT" | jq -r '.redirectChain // "missing"')
+assert_eq "$REDIRECT_COUNT" "0" "redirectCount present for direct fetch"
+if [ "$FINAL_URL" != "missing" ]; then
+  pass "finalUrl field present"
+else
+  fail "finalUrl field missing from fetch output"
+fi
+if [ "$REDIRECT_CHAIN" != "missing" ]; then
+  pass "redirectChain field present"
+else
+  fail "redirectChain field missing from fetch output"
+fi
+
 # ----- Summary -----
 
 printf '\n================================================\n'
