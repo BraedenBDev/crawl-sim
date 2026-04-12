@@ -98,11 +98,35 @@ if OUT=$(run_score root-minimal 2>/dev/null); then
   SCORE=$(printf '%s' "$OUT" | jq -r '.bots.googlebot.categories.structuredData.score')
   PAGE_TYPE=$(printf '%s' "$OUT" | jq -r '.bots.googlebot.categories.structuredData.pageType // "missing"')
   TOP_PAGE_TYPE=$(printf '%s' "$OUT" | jq -r '.pageType // "missing"')
+  OVERRIDDEN=$(printf '%s' "$OUT" | jq -r '.pageTypeOverridden')
+  MISSING_LEN=$(printf '%s' "$OUT" | jq -r '.bots.googlebot.categories.structuredData.missing | length')
+  VIOLATIONS_LEN=$(printf '%s' "$OUT" | jq -r '.bots.googlebot.categories.structuredData.violations | length')
   assert_eq "$PAGE_TYPE" "root" "per-bot structuredData.pageType auto-detected from https://example.com/"
   assert_eq "$TOP_PAGE_TYPE" "root" "top-level pageType"
+  assert_eq "$OVERRIDDEN" "false" "pageTypeOverridden=false when no flag passed"
   assert_eq "$SCORE" "100" "structuredData score for root with canonical root set"
+  assert_eq "$MISSING_LEN" "0" "no missing expected schemas"
+  assert_eq "$VIOLATIONS_LEN" "0" "no violations"
 else
   fail "compute-score.sh exited non-zero on root-minimal"
+fi
+
+case_begin "AC2+AC5: --page-type detail on same content scores low and flags missing schemas"
+if OUT=$(run_score root-minimal --page-type detail 2>/dev/null); then
+  SCORE=$(printf '%s' "$OUT" | jq -r '.bots.googlebot.categories.structuredData.score')
+  PAGE_TYPE=$(printf '%s' "$OUT" | jq -r '.pageType')
+  OVERRIDDEN=$(printf '%s' "$OUT" | jq -r '.pageTypeOverridden')
+  MISSING=$(printf '%s' "$OUT" | jq -c '.bots.googlebot.categories.structuredData.missing')
+  EXTRAS=$(printf '%s' "$OUT" | jq -c '.bots.googlebot.categories.structuredData.extras')
+  assert_eq "$PAGE_TYPE" "detail" "top-level pageType honors --page-type override"
+  assert_eq "$OVERRIDDEN" "true" "pageTypeOverridden=true when flag passed"
+  assert_lt "$SCORE" "70" "structuredData score for wrong page-type classification"
+  assert_contains "$MISSING" "Article" "missing[] contains Article for detail page"
+  assert_contains "$MISSING" "BreadcrumbList" "missing[] contains BreadcrumbList for detail page"
+  assert_contains "$EXTRAS" "Organization" "extras[] contains Organization (not in detail rubric)"
+  assert_contains "$EXTRAS" "WebSite" "extras[] contains WebSite (not in detail rubric)"
+else
+  fail "compute-score.sh exited non-zero with --page-type detail"
 fi
 
 # ----- Summary -----
