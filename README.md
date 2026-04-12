@@ -126,6 +126,7 @@ Every script is standalone and outputs JSON to stdout:
 ./scripts/check-llmstxt.sh   https://yoursite.com
 ./scripts/check-sitemap.sh   https://yoursite.com
 ./scripts/compute-score.sh   /tmp/audit-data/
+./scripts/compute-score.sh   --page-type root /tmp/audit-data/   # override URL heuristic
 ```
 
 ### CI/CD
@@ -148,7 +149,7 @@ Each bot is scored 0–100 across five weighted categories:
 |----------|:------:|----------|
 | **Accessibility** | 25 | robots.txt allows, HTTP 200, response time |
 | **Content Visibility** | 30 | server HTML word count, heading structure, internal links, image alt text |
-| **Structured Data** | 20 | JSON-LD presence, validity, page-appropriate `@type` |
+| **Structured Data** | 20 | JSON-LD presence, validity, page-type-aware `@type` rubric (root / detail / archive / faq / about / contact / generic) |
 | **Technical Signals** | 15 | title / description / canonical / OG meta, sitemap inclusion |
 | **AI Readiness** | 10 | `llms.txt` structure, content citability |
 
