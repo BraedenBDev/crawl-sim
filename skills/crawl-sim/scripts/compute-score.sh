@@ -312,12 +312,16 @@ for bot_id in $BOTS; do
     continue
   fi
 
-  STATUS=$(jget_num "$FETCH" '.status')
-  TOTAL_TIME=$(jget_num "$FETCH" '.timing.total')
-  SERVER_WORD_COUNT=$(jget_num "$FETCH" '.wordCount')
-  RENDERS_JS=$(jq -r '.bot.rendersJavaScript | if . == null then "unknown" else tostring end' "$FETCH" 2>/dev/null || echo "unknown")
+  # Batch-read fields from fetch file (1 jq call instead of 4)
+  read -r STATUS TOTAL_TIME SERVER_WORD_COUNT RENDERS_JS <<< \
+    "$(jq -r '[
+      (.status // 0),
+      (.timing.total // 0),
+      (.wordCount // 0),
+      (.bot.rendersJavaScript | if . == null then "unknown" else tostring end)
+    ] | @tsv' "$FETCH" 2>/dev/null || echo "0	0	0	unknown")"
 
-  ROBOTS_ALLOWED=$(jget_bool "$ROBOTS" '.allowed')
+  ROBOTS_ALLOWED=$(jq -r '.allowed // false | tostring' "$ROBOTS" 2>/dev/null || echo "false")
 
   EFFECTIVE_WORD_COUNT=$SERVER_WORD_COUNT
   HYDRATION_PENALTY=0
@@ -341,10 +345,15 @@ for bot_id in $BOTS; do
 
   # --- Category 1: Accessibility (0-100) ---
   ACC=0
-  [ "$ROBOTS_ALLOWED" = "true" ] && ACC=$((ACC + 40))
-  [ "$STATUS" = "200" ] && ACC=$((ACC + 40))
-  TIME_SCORE=$(awk -v t="$TOTAL_TIME" 'BEGIN { if (t < 2) print 20; else if (t < 5) print 10; else print 0 }')
-  ACC=$((ACC + TIME_SCORE))
+  if [ "$ROBOTS_ALLOWED" != "true" ]; then
+    # R4 critical-fail: robots blocking overrides accessibility to 0/F
+    ACC=0
+  else
+    ACC=$((ACC + 40))
+    [ "$STATUS" = "200" ] && ACC=$((ACC + 40))
+    TIME_SCORE=$(awk -v t="$TOTAL_TIME" 'BEGIN { if (t < 2) print 20; else if (t < 5) print 10; else print 0 }')
+    ACC=$((ACC + TIME_SCORE))
+  fi
 
   # --- Category 2: Content Visibility (0-100) ---
   CONTENT=0
@@ -353,18 +362,23 @@ for bot_id in $BOTS; do
   elif [ "$EFFECTIVE_WORD_COUNT" -ge 50 ]; then CONTENT=$((CONTENT + 10))
   fi
 
-  H1_COUNT=$(jget_num "$META" '.headings.h1.count')
-  H2_COUNT=$(jget_num "$META" '.headings.h2.count')
+  # Batch-read fields from meta + links (1 jq call instead of 4 + 1)
+  read -r H1_COUNT H2_COUNT IMG_TOTAL IMG_WITH_ALT <<< \
+    "$(jq -r '[
+      (.headings.h1.count // 0),
+      (.headings.h2.count // 0),
+      (.images.total // 0),
+      (.images.withAlt // 0)
+    ] | @tsv' "$META" 2>/dev/null || echo "0	0	0	0")"
+
+  INTERNAL_LINKS=$(jq -r 'if (.internal | type) == "number" then .internal else .counts.internal // 0 end' "$LINKS" 2>/dev/null || echo "0")
+
   [ "$H1_COUNT" -ge 1 ] && CONTENT=$((CONTENT + 20))
   [ "$H2_COUNT" -ge 1 ] && CONTENT=$((CONTENT + 15))
 
-  INTERNAL_LINKS=$(jget_num "$LINKS" '.counts.internal')
   if [ "$INTERNAL_LINKS" -ge 5 ]; then CONTENT=$((CONTENT + 20))
   elif [ "$INTERNAL_LINKS" -ge 1 ]; then CONTENT=$((CONTENT + 10))
   fi
-
-  IMG_TOTAL=$(jget_num "$META" '.images.total')
-  IMG_WITH_ALT=$(jget_num "$META" '.images.withAlt')
   if [ "$IMG_TOTAL" -eq 0 ]; then
     CONTENT=$((CONTENT + 15))
   else
@@ -430,7 +444,7 @@ for bot_id in $BOTS; do
         if ! list_contains "$field" $BLOCK_FIELDS; then
           FIELD_VIOLATIONS_JSON=$(printf '%s' "$FIELD_VIOLATIONS_JSON" | jq \
             --arg schema "$BLOCK_TYPE" --arg field "$field" \
-            '. + [{kind: "missing_required_field", schema: $schema, field: $field, impact: -5}]')
+            '. + [{kind: "missing_required_field", schema: $schema, field: $field, impact: -5, confidence: "high"}]')
           FIELD_PENALTY=$((FIELD_PENALTY + 5))
         fi
       done
@@ -493,9 +507,9 @@ for bot_id in $BOTS; do
       missing:    ($missingList    | to_arr),
       extras:     ($extrasList     | to_arr),
       violations: (
-        ($forbiddenPresent | to_arr | map({kind: "forbidden_schema", schema: ., impact: -10}))
+        ($forbiddenPresent | to_arr | map({kind: "forbidden_schema", schema: ., impact: -10, confidence: "high"}))
         + (if $validPenalty > 0
-             then [{kind: "invalid_jsonld", count: $invalidCount, impact: (0 - $validPenalty)}]
+             then [{kind: "invalid_jsonld", count: $invalidCount, impact: (0 - $validPenalty), confidence: "high"}]
              else []
            end)
         + $fieldViolations
@@ -507,20 +521,24 @@ for bot_id in $BOTS; do
 
   # --- Category 4: Technical Signals (0-100) ---
   TECHNICAL=0
-  TITLE=$(jget "$META" '.title' "")
-  DESCRIPTION=$(jget "$META" '.description' "")
-  CANONICAL=$(jget "$META" '.canonical' "")
-  OG_TITLE=$(jget "$META" '.og.title' "")
-  OG_DESC=$(jget "$META" '.og.description' "")
+  # Batch-read meta fields for technical scoring (1 jq call instead of 5)
+  IFS=$'\t' read -r TITLE DESCRIPTION CANONICAL OG_TITLE OG_DESC <<< \
+    "$(jq -r '[
+      (.title // "" | gsub("\t"; " ")),
+      (.description // "" | gsub("\t"; " ")),
+      (.canonical // "" | gsub("\t"; " ")),
+      (.og.title // "" | gsub("\t"; " ")),
+      (.og.description // "" | gsub("\t"; " "))
+    ] | @tsv' "$META" 2>/dev/null || printf '\t\t\t\t')"
 
-  [ -n "$TITLE" ] && [ "$TITLE" != "null" ] && TECHNICAL=$((TECHNICAL + 25))
-  [ -n "$DESCRIPTION" ] && [ "$DESCRIPTION" != "null" ] && TECHNICAL=$((TECHNICAL + 25))
-  [ -n "$CANONICAL" ] && [ "$CANONICAL" != "null" ] && TECHNICAL=$((TECHNICAL + 20))
-  if [ -n "$OG_TITLE" ] && [ "$OG_TITLE" != "null" ]; then TECHNICAL=$((TECHNICAL + 8)); fi
-  if [ -n "$OG_DESC" ] && [ "$OG_DESC" != "null" ]; then TECHNICAL=$((TECHNICAL + 7)); fi
+  [ -n "$TITLE" ] && TECHNICAL=$((TECHNICAL + 25))
+  [ -n "$DESCRIPTION" ] && TECHNICAL=$((TECHNICAL + 25))
+  [ -n "$CANONICAL" ] && TECHNICAL=$((TECHNICAL + 20))
+  [ -n "$OG_TITLE" ] && TECHNICAL=$((TECHNICAL + 8))
+  [ -n "$OG_DESC" ] && TECHNICAL=$((TECHNICAL + 7))
 
-  SITEMAP_EXISTS=$(jget_bool "$SITEMAP_FILE" '.exists')
-  SITEMAP_CONTAINS=$(jget_bool "$SITEMAP_FILE" '.containsTarget')
+  SITEMAP_EXISTS=$(jq -r '.exists // false | tostring' "$SITEMAP_FILE" 2>/dev/null || echo "false")
+  SITEMAP_CONTAINS=$(jq -r '.containsTarget // false | tostring' "$SITEMAP_FILE" 2>/dev/null || echo "false")
   if [ "$SITEMAP_EXISTS" = "true" ] && [ "$SITEMAP_CONTAINS" = "true" ]; then
     TECHNICAL=$((TECHNICAL + 15))
   elif [ "$SITEMAP_EXISTS" = "true" ]; then
@@ -529,10 +547,14 @@ for bot_id in $BOTS; do
 
   # --- Category 5: AI Readiness (0-100) ---
   AI=0
-  LLMS_EXISTS=$(jget_bool "$LLMSTXT_FILE" '.llmsTxt.exists')
-  LLMS_HAS_TITLE=$(jget_bool "$LLMSTXT_FILE" '.llmsTxt.hasTitle')
-  LLMS_HAS_DESC=$(jget_bool "$LLMSTXT_FILE" '.llmsTxt.hasDescription')
-  LLMS_URLS=$(jget_num "$LLMSTXT_FILE" '.llmsTxt.urlCount')
+  # Batch-read llmstxt fields (1 jq call instead of 4)
+  read -r LLMS_EXISTS LLMS_HAS_TITLE LLMS_HAS_DESC LLMS_URLS <<< \
+    "$(jq -r '[
+      (.llmsTxt.exists // false | tostring),
+      (.llmsTxt.hasTitle // false | tostring),
+      (.llmsTxt.hasDescription // false | tostring),
+      (.llmsTxt.urlCount // 0)
+    ] | @tsv' "$LLMSTXT_FILE" 2>/dev/null || echo "false	false	false	0")"
 
   if [ "$LLMS_EXISTS" = "true" ]; then
     AI=$((AI + 40))
@@ -541,7 +563,7 @@ for bot_id in $BOTS; do
     [ "$LLMS_URLS" -ge 1 ] && AI=$((AI + 6))
   fi
   [ "$EFFECTIVE_WORD_COUNT" -ge 200 ] && AI=$((AI + 20))
-  if [ "$H1_COUNT" -ge 1 ] && [ -n "$DESCRIPTION" ] && [ "$DESCRIPTION" != "null" ]; then
+  if [ "$H1_COUNT" -ge 1 ] && [ -n "$DESCRIPTION" ]; then
     AI=$((AI + 20))
   fi
 

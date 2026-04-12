@@ -51,7 +51,7 @@ Split the work into **five Bash invocations**, each with a clear `description` f
 
 ### Stage 1 — Fetch
 
-Tell the user: "Fetching as Googlebot, GPTBot, ClaudeBot, and PerplexityBot..."
+Tell the user: "Fetching as Googlebot, GPTBot, ClaudeBot, and PerplexityBot in parallel..."
 
 ```bash
 # Resolve skill directory
@@ -67,7 +67,16 @@ fi
 RUN_DIR=$(mktemp -d -t crawl-sim.XXXXXX)
 URL="<user-provided-url>"
 for bot in googlebot gptbot claudebot perplexitybot; do
-  "$SKILL_DIR/scripts/fetch-as-bot.sh" "$URL" "$SKILL_DIR/profiles/${bot}.json" > "$RUN_DIR/fetch-${bot}.json"
+  "$SKILL_DIR/scripts/fetch-as-bot.sh" "$URL" "$SKILL_DIR/profiles/${bot}.json" > "$RUN_DIR/fetch-${bot}.json" &
+done
+wait
+
+# Verify no empty fetch files (guard against silent parallel failures)
+for bot in googlebot gptbot claudebot perplexitybot; do
+  if [ ! -s "$RUN_DIR/fetch-${bot}.json" ]; then
+    echo "WARNING: fetch-${bot}.json is empty — retrying serially" >&2
+    "$SKILL_DIR/scripts/fetch-as-bot.sh" "$URL" "$SKILL_DIR/profiles/${bot}.json" > "$RUN_DIR/fetch-${bot}.json"
+  fi
 done
 ```
 
@@ -124,7 +133,7 @@ Tell the user: "Computing per-bot scores and finalizing the report..."
 
 ```bash
 "$SKILL_DIR/scripts/compute-score.sh" "$RUN_DIR" > "$RUN_DIR/score.json"
-cp "$RUN_DIR/score.json" ./crawl-sim-report.json
+"$SKILL_DIR/scripts/build-report.sh" "$RUN_DIR" > ./crawl-sim-report.json
 ```
 
 **Page-type awareness.** `compute-score.sh` derives a page type from the target URL (`root` / `detail` / `archive` / `faq` / `about` / `contact` / `generic`) and picks a schema rubric accordingly. Root pages are expected to ship `Organization` + `WebSite` — penalizing them for missing `BreadcrumbList` or `FAQPage` would be wrong, so the scorer doesn't. If the URL heuristic picks the wrong type (e.g., a homepage at `/en/` that URL-parses as generic), pass `--page-type <type>`:
@@ -161,6 +170,18 @@ Print a boxed score card to the terminal:
 ```
 
 Progress bars are 20 chars wide using `█` and `░` (each char = 5%).
+
+**Parity-aware display.** When `parity.score >= 95` AND all per-bot composite scores are within 5 points of each other, collapse the four bot rows into one:
+
+```
+║  All 4 bots     98  A   ███████████████████░  (parity: content identical)  ║
+```
+
+Only show individual bot rows when scores diverge — that's when per-bot detail adds information. Always show the parity line in the category breakdown:
+
+```
+║  Content Parity   100  A   (all bots see the same content)                 ║
+```
 
 ## Output Layer 2 — Narrative Audit
 
