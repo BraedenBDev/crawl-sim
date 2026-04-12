@@ -31,6 +31,9 @@ Keep status lines short, active, and specific to this URL. Never use the same se
 /crawl-sim <url> --bot gptbot               # single bot
 /crawl-sim <url> --category structured-data # category deep dive
 /crawl-sim <url> --json                     # JSON output only (for CI)
+/crawl-sim <url> --pdf                      # audit + PDF report to Desktop
+/crawl-sim <url> --compare <url2>           # side-by-side comparison of two sites
+/crawl-sim <url> --compare <url2> --pdf     # comparison + PDF report
 ```
 
 ## Prerequisites — check once at the start
@@ -214,11 +217,17 @@ Then produce **prioritized findings** ranked by total point impact across bots:
 - **Framework detection.** Scan the HTML body for signals: `<meta name="next-head-count">` or `_next/static` → Next.js (Pages Router or App Router respectively), `<div id="__nuxt">` → Nuxt, `<div id="app">` with thin content → SPA (Vue/React CSR), `<!--$-->` placeholder tags → React 18 Suspense. Use these to tailor fix recommendations.
 - **No speculation beyond the data.** If server HTML has 0 `<a>` tags inside a component, say "component not present in server HTML" — not "JavaScript hydration failed" unless the diff-render data proves it.
 - **Known extractor limitations.** The bash meta extractor sometimes reports `h1Text: null` even when `h1.count: 1` — that happens when the H1 contains nested tags (`<br>`, `<span>`, `<svg>`). The count is still correct. Don't flag this as a site bug — it's tracked in GitHub issue #4.
+- **robots.txt enforceability.** Each bot in the score output carries `robotsTxtEnforceability` — one of `enforced`, `advisory_only`, or `stealth_risk`. When robots blocks a bot:
+  - `enforced`: The block works. State it directly: *"GPTBot is blocked by robots.txt."*
+  - `advisory_only`: The block is unenforceable via robots.txt alone. Flag it: *"robots.txt blocks ChatGPT-User, but OpenAI has stated user-initiated fetches may not respect robots.txt. Network-level enforcement (e.g., Cloudflare WAF rules) is needed to actually block this bot."*
+  - `stealth_risk`: The bot claims compliance but has been caught bypassing. Note: *"PerplexityBot is blocked by robots.txt, but Cloudflare has documented instances of Perplexity using undeclared crawlers with generic user-agent strings to access blocked sites."*
+- **Cloudflare context.** Since July 2025, Cloudflare blocks all AI training crawlers (GPTBot, ClaudeBot, CCBot, etc.) **by default** for new domains (~20% of the web). If a site uses Cloudflare, robots.txt may be redundant for training bots — the CDN blocks them at the network level before they reach the origin. The score output's `cloudflareCategory` field (`ai_crawler`, `ai_search`, `ai_assistant`) indicates which tier each bot falls into.
 - **Per-bot quirks to surface:**
   - Googlebot: renders JS. If `diff-render.sh` was skipped, note that comparison was unavailable and recommend installing Playwright.
   - GPTBot / ClaudeBot / PerplexityBot: `rendersJavaScript: false` at observed confidence — flag any server-vs-rendered delta as invisible-to-AI content.
-  - `chatgpt-user` / `perplexity-user`: officially ignore robots.txt for user-initiated fetches. Blocking these via robots.txt has no effect.
-  - PerplexityBot: third-party reports of stealth/undeclared crawling. Mention if relevant, don't assert.
+  - `chatgpt-user` / `perplexity-user`: `robotsTxtEnforceability: advisory_only`. Blocking these via robots.txt alone has no effect — always flag this in findings.
+  - `claude-user`: Anthropic is notably stricter — commits to respecting robots.txt even for user-initiated fetches (`robotsTxtEnforceability: enforced`).
+  - PerplexityBot: `robotsTxtEnforceability: stealth_risk` — third-party and Cloudflare reports of stealth/undeclared crawling. Mention if relevant, don't assert.
 
 After findings, write a **Summary** paragraph: what's working well, biggest wins, confidence caveats. Keep it short — two to three sentences.
 
@@ -232,6 +241,37 @@ After findings, write a **Summary** paragraph: what's working well, biggest wins
 - If the target URL returns non-200, report immediately and still run robots.txt / sitemap / llms.txt checks (they don't require the page to load).
 - If `jq` or `curl` is missing, exit with install instructions.
 - If `diff-render.sh` skips, the narrative must note that per-bot differentiation is reduced.
+
+## PDF Report (`--pdf`)
+
+When the user passes `--pdf`, after the narrative output, generate a PDF report:
+
+```bash
+"$SKILL_DIR/scripts/generate-report-html.sh" ./crawl-sim-report.json "$RUN_DIR/report.html"
+"$SKILL_DIR/scripts/html-to-pdf.sh" "$RUN_DIR/report.html" "$HOME/Desktop/crawl-sim-audit.pdf"
+```
+
+Tell the user where the PDF was saved. If `html-to-pdf.sh` fails (no Chrome or Playwright), the HTML file is still available — tell the user and suggest installing a renderer.
+
+## Comparative Audit (`--compare <url2>`)
+
+When the user passes `--compare <url2>`, run two full audits and produce a side-by-side report:
+
+1. Run the complete 5-stage pipeline for `<url>` — save report as `./crawl-sim-report-a.json`
+2. Run the complete 5-stage pipeline for `<url2>` — save report as `./crawl-sim-report-b.json`
+3. Generate the comparison:
+
+```bash
+"$SKILL_DIR/scripts/generate-compare-html.sh" ./crawl-sim-report-a.json ./crawl-sim-report-b.json "$RUN_DIR/compare.html"
+```
+
+4. If `--pdf` was also passed:
+
+```bash
+"$SKILL_DIR/scripts/html-to-pdf.sh" "$RUN_DIR/compare.html" "$HOME/Desktop/crawl-sim-compare.pdf"
+```
+
+The narrative for a comparison should lead with: which site wins overall, by how many points, and in which categories. Then highlight the biggest deltas — what Site A does better, what Site B does better, and what both share.
 
 ## Cleanup
 

@@ -4,7 +4,7 @@
   "vendor": "OpenAI",
   "userAgent": "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; ChatGPT-User/1.0; +https://openai.com/bot",
   "robotsTxtToken": "ChatGPT-User",
-  "purpose": "user-initiated",
+  "purpose": "user_retrieval",
   "rendersJavaScript": "unknown",
   "respectsRobotsTxt": "partial",
   "crawlDelaySupported": "unknown",
@@ -23,6 +23,11 @@
     }
   },
   "lastVerified": "2026-04-11",
-  "relatedBots": ["gptbot", "oai-searchbot"],
-  "notes": "Not used for automatic crawling. Not used to determine search appearance. User-initiated fetches in ChatGPT and Custom GPTs."
+  "relatedBots": [
+    "gptbot",
+    "oai-searchbot"
+  ],
+  "notes": "Not used for automatic crawling. Not used to determine search appearance. User-initiated fetches in ChatGPT and Custom GPTs.",
+  "cloudflareCategory": "ai_assistant",
+  "robotsTxtEnforceability": "advisory_only"
 }

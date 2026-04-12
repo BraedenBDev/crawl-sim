@@ -312,14 +312,16 @@ for bot_id in $BOTS; do
     continue
   fi
 
-  # Batch-read fields from fetch file (1 jq call instead of 4)
-  read -r STATUS TOTAL_TIME SERVER_WORD_COUNT RENDERS_JS <<< \
+  # Batch-read fields from fetch file
+  read -r STATUS TOTAL_TIME SERVER_WORD_COUNT RENDERS_JS PURPOSE_TIER ROBOTS_ENFORCE <<< \
     "$(jq -r '[
       (.status // 0),
       (.timing.total // 0),
       (.wordCount // 0),
-      (.bot.rendersJavaScript | if . == null then "unknown" else tostring end)
-    ] | @tsv' "$FETCH" 2>/dev/null || echo "0	0	0	unknown")"
+      (.bot.rendersJavaScript | if . == null then "unknown" else tostring end),
+      (.bot.purpose // "unknown"),
+      (.bot.robotsTxtEnforceability // "unknown")
+    ] | @tsv' "$FETCH" 2>/dev/null || echo "0	0	0	unknown	unknown	unknown")"
 
   ROBOTS_ALLOWED=$(jq -r '.allowed // false | tostring' "$ROBOTS" 2>/dev/null || echo "false")
 
@@ -586,6 +588,8 @@ for bot_id in $BOTS; do
     --arg id "$bot_id" \
     --arg name "$BOT_NAME" \
     --arg rendersJs "$RENDERS_JS" \
+    --arg purpose "$PURPOSE_TIER" \
+    --arg robotsEnforce "$ROBOTS_ENFORCE" \
     --argjson score "$BOT_SCORE" \
     --arg grade "$BOT_GRADE" \
     --argjson acc "$ACC" \
@@ -605,6 +609,8 @@ for bot_id in $BOTS; do
       id: $id,
       name: $name,
       rendersJavaScript: (if $rendersJs == "true" then true elif $rendersJs == "false" then false else $rendersJs end),
+      purpose: $purpose,
+      robotsTxtEnforceability: $robotsEnforce,
       score: $score,
       grade: $grade,
       visibility: {

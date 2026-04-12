@@ -4,7 +4,7 @@
   "vendor": "Anthropic",
   "userAgent": "Claude-User",
   "robotsTxtToken": "Claude-User",
-  "purpose": "user-initiated",
+  "purpose": "user_retrieval",
   "rendersJavaScript": "unknown",
   "respectsRobotsTxt": true,
   "crawlDelaySupported": "unknown",
@@ -23,6 +23,11 @@
     }
   },
   "lastVerified": "2026-04-11",
-  "relatedBots": ["claudebot", "claude-searchbot"],
-  "notes": "When individuals ask questions to Claude, it may access websites. Blocking prevents Claude from retrieving content in response to user queries."
+  "relatedBots": [
+    "claudebot",
+    "claude-searchbot"
+  ],
+  "notes": "When individuals ask questions to Claude, it may access websites. Blocking prevents Claude from retrieving content in response to user queries.",
+  "cloudflareCategory": "ai_assistant",
+  "robotsTxtEnforceability": "enforced"
 }
