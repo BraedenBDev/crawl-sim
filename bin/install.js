@@ -48,7 +48,16 @@ Not using npm? Clone the repo directly:
 }
 
 function resolveTarget(args) {
-  if (args.dir) return path.resolve(args.dir, 'crawl-sim');
+  let target;
+  if (args.dir) {
+    target = path.resolve(args.dir, 'crawl-sim');
+    // Warn if installing outside $HOME (e.g., --dir /etc)
+    if (!target.startsWith(os.homedir()) && !target.startsWith(process.cwd())) {
+      console.warn(`  ! Warning: installing to ${target} (outside home directory)`);
+      console.warn(`    If this is unintentional, use: crawl-sim install (default: ~/.claude/skills/)`);
+    }
+    return target;
+  }
   if (args.project) return path.resolve(process.cwd(), '.claude', 'skills', 'crawl-sim');
   return path.resolve(os.homedir(), '.claude', 'skills', 'crawl-sim');
 }

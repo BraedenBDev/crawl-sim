@@ -28,10 +28,10 @@ jobs:
       id-token: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
       - name: Setup Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
@@ -42,7 +42,7 @@ jobs:
       # *as the auth credential* is only supported on npm 11.5+.
       - name: Upgrade npm to latest
         run: |
-          npm install -g npm@latest
+          npm install -g npm@^11.5.0
           npm --version
 
       - name: Verify package metadata

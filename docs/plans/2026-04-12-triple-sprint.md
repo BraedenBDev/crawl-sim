@@ -744,7 +744,7 @@ Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>"
 | Third-party marketplace | `/plugin install crawl-sim@some-marketplace` | Submit to marketplace repo |
 | npm | `/plugin install @braedenbuilds/crawl-sim@npm` | `plugin.json` in npm package |
 
-**Decision: direct GitHub install + own marketplace.** Keeps distribution under Braeden's control. Third-party marketplaces can reference the GitHub repo later.
+**Decision: direct GitHub install + own marketplace.** Keeps distribution under maintainer's control. Third-party marketplaces can reference the GitHub repo later.
 
 ### Task C1: Add plugin manifest and restructure for plugin layout
 
@@ -783,7 +783,7 @@ Write `.claude-plugin/marketplace.json`:
   "name": "crawl-sim",
   "owner": {
     "name": "BraedenBDev",
-    "email": "braeden@braedenbuilds.com"
+    "url": "https://github.com/BraedenBDev"
   },
   "plugins": [
     {

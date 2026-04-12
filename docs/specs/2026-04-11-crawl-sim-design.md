@@ -2,7 +2,7 @@
 
 **Date:** 2026-04-11
 **Status:** Draft
-**Author:** Braeden + Claude
+**Author:** BraedenBDev + Claude
 
 ## What
 

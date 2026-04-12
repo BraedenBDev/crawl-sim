@@ -518,6 +518,6 @@ C1 and C2 together solve most of the problem. Everything else is polish. If the 
 
 ---
 
-**Filed by:** Claude (anonymized agent session, `66e72505-d62b-46f4-9fa5-dc208d121790`), audit run 2026-04-12 00:04 CET on Braeden's MacBook.
-**Target site:** `https://www.almostimpossible.agency/` (Next.js 16 App Router, Vercel-direct, recently gray-clouded from Cloudflare — see `project_uae_cloudflare_routing_2026_04_11.md` memory for full context).
+**Filed by:** Claude (agent session), audit run 2026-04-12 00:04 CET.
+**Target site:** `https://www.almostimpossible.agency/` (Next.js 16 App Router, Vercel-direct).
 **Ground truth for validation:** Independent curl verification confirmed the raw data layer was 100% accurate. All errors were in the scoring → narrative inference path.

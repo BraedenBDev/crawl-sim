@@ -128,13 +128,15 @@ if [ "$EXISTS" = "true" ]; then
   BEST_MATCH_KIND="allow"
 
   match_pattern() {
-    # Convert robots.txt glob (* and $) to a regex prefix check
+    # Convert robots.txt glob (* and $) to a regex prefix check.
+    # Patterns come from untrusted robots.txt — escape all regex metacharacters
+    # except * (wildcard) and $ (end-of-URL anchor) per the robots.txt spec.
     local pat="$1"
     local path="$2"
-    # Escape regex special chars except * and $
     local esc
-    esc=$(printf '%s' "$pat" | sed 's/[].[\^$()+?{|]/\\&/g' | sed 's/\*/.*/g')
-    printf '%s' "$path" | grep -qE "^${esc}"
+    esc=$(printf '%s' "$pat" | sed 's/[].[\^()+?{|]/\\&/g' | sed 's/\*/.*/g')
+    # Use timeout-bounded grep to prevent ReDoS from crafted patterns
+    printf '%s' "$path" | timeout 2 grep -qE "^${esc}" 2>/dev/null
   }
 
   while IFS= read -r pat; do
