@@ -85,7 +85,7 @@ if [ "$BLOCK_COUNT" -gt 0 ]; then
       BLOCK_INFO=$(printf '%s' "$block" | jq -c '
         {
           type: (if has("@type") then (.["@type"] | if type == "array" then .[0] else . end) else "unknown" end),
-          fields: (keys | map(select(startswith("@") | not)) + (keys | map(select(startswith("@")))))
+          fields: (keys | map(select(startswith("@") | not)))
         }
       ' 2>/dev/null || echo '{"type":"unknown","fields":[]}')
       BLOCKS_JSON=$(printf '%s' "$BLOCKS_JSON" | jq --argjson b "$BLOCK_INFO" '. + [$b]')

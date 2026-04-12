@@ -4,10 +4,10 @@
   "invalidCount": 0,
   "types": ["Organization", "WebSite", "Article", "FAQPage"],
   "blocks": [
-    { "type": "Organization", "fields": ["@context", "@type", "name", "url"] },
-    { "type": "WebSite", "fields": ["@context", "@type", "name", "url"] },
-    { "type": "Article", "fields": ["@context", "@type", "headline", "author", "datePublished"] },
-    { "type": "FAQPage", "fields": ["@context", "@type", "mainEntity"] }
+    { "type": "Organization", "fields": ["name", "url"] },
+    { "type": "WebSite", "fields": ["name", "url"] },
+    { "type": "Article", "fields": ["headline", "author", "datePublished"] },
+    { "type": "FAQPage", "fields": ["mainEntity"] }
   ],
   "flags": {
     "hasOrganization": true,

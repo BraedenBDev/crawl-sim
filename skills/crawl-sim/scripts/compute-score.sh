@@ -415,15 +415,19 @@ for bot_id in $BOTS; do
   # Field-level validation (C3): check required fields per schema type
   FIELD_PENALTY=0
   FIELD_VIOLATIONS_JSON="[]"
-  if [ -f "$JSONLD" ] && jq -e '.blocks' "$JSONLD" >/dev/null 2>&1; then
-    BLOCK_COUNT_FOR_FIELDS=$(jq '.blocks | length' "$JSONLD" 2>/dev/null || echo "0")
+  BLOCK_COUNT_FOR_FIELDS=0
+  if [ -f "$JSONLD" ]; then
+    BLOCK_COUNT_FOR_FIELDS=$(jq 'if has("blocks") then .blocks | length else 0 end' "$JSONLD" 2>/dev/null || echo "0")
+  fi
+  if [ "$BLOCK_COUNT_FOR_FIELDS" -gt 0 ]; then
     i=0
     while [ "$i" -lt "$BLOCK_COUNT_FOR_FIELDS" ]; do
       BLOCK_TYPE=$(jq -r ".blocks[$i].type" "$JSONLD" 2>/dev/null || echo "")
       BLOCK_FIELDS=$(jq -r ".blocks[$i].fields[]?" "$JSONLD" 2>/dev/null | tr '\n' ' ')
       REQUIRED=$(required_fields_for "$BLOCK_TYPE")
       for field in $REQUIRED; do
-        if ! printf ' %s ' "$BLOCK_FIELDS" | grep -q " $field "; then
+        # shellcheck disable=SC2086
+        if ! list_contains "$field" $BLOCK_FIELDS; then
           FIELD_VIOLATIONS_JSON=$(printf '%s' "$FIELD_VIOLATIONS_JSON" | jq \
             --arg schema "$BLOCK_TYPE" --arg field "$field" \
             '. + [{kind: "missing_required_field", schema: $schema, field: $field, impact: -5}]')

@@ -71,10 +71,8 @@ if [ "$CURL_EXIT" -ne 0 ]; then
   exit 0
 fi
 
-STATUS=$(echo "$TIMING" | jq -r '.statusCode')
-TOTAL_TIME=$(echo "$TIMING" | jq -r '.total')
-TTFB=$(echo "$TIMING" | jq -r '.ttfb')
-SIZE=$(echo "$TIMING" | jq -r '.sizeDownload')
+read -r STATUS TOTAL_TIME TTFB SIZE REDIRECT_COUNT FINAL_URL <<< \
+  "$(echo "$TIMING" | jq -r '[.statusCode, .total, .ttfb, .sizeDownload, .redirectCount, .finalUrl] | @tsv')"
 
 # Parse response headers into a JSON object using jq for safe escaping.
 # curl -L writes multiple blocks on redirect; jq keeps the last definition
@@ -88,9 +86,6 @@ HEADERS_JSON=$(tr -d '\r' < "$HEADERS_FILE" \
       | map({(.k): .v})
       | add // {}
     ')
-
-REDIRECT_COUNT=$(echo "$TIMING" | jq -r '.redirectCount')
-FINAL_URL=$(echo "$TIMING" | jq -r '.finalUrl')
 
 # Parse redirect chain from headers dump.
 # curl -D writes multiple HTTP response blocks on redirect — each starts with HTTP/.
