@@ -88,10 +88,13 @@ git clone https://github.com/BraedenBDev/crawl-sim.git ~/.claude/skills/crawl-si
 
 - **Multi-bot simulation.** Nine verified bot profiles covering Google, OpenAI, Anthropic, and Perplexity — including the bot-vs-user-agent distinction (e.g., `ChatGPT-User` officially ignores robots.txt; `claude-user` respects it).
 - **Quantified scoring.** Each bot is graded 0–100 across five categories with letter grades A through F, plus a weighted composite score.
+- **Page-type-aware rubric.** The structured-data category derives the page type from the URL (`root` / `detail` / `archive` / `faq` / `about` / `contact` / `generic`) and applies a per-type schema rubric. A homepage shipping `Organization` + `WebSite` scores 100 without being penalized for not having `BreadcrumbList` or `FAQPage`. Override the detection with `--page-type <type>` when the URL heuristic picks wrong.
+- **Self-explaining scores.** Every `structuredData` block in the JSON report ships `pageType`, `expected`, `optional`, `forbidden`, `present`, `missing`, `extras`, `violations`, `calculation`, and `notes` — so the narrative layer reads the scorer's reasoning directly instead of guessing what was penalized.
 - **Agent-native interpretation.** The Claude Code skill reads raw data, identifies root causes (framework signals, hydration boundaries, soft-404s), and recommends specific fixes.
 - **Three-layer output.** Terminal score card, prose narrative, and structured JSON — so humans and CI both get what they need.
 - **Confidence transparency.** Every claim is tagged `official`, `observed`, or `inferred`. The skill notes when recommendations depend on observed-but-undocumented behavior.
 - **Shell-native core.** All checks use only `curl` + `jq`. No Node, no Python, no Docker. Each script is independently invokable.
+- **Regression-tested.** `npm test` runs a 37-assertion scoring suite against synthetic fixtures, covering URL→page-type detection, per-type rubrics, missing/forbidden schema flagging, and golden non-structured output.
 - **Extensible.** Drop a new profile JSON into `profiles/` and it's auto-discovered.
 
 ---
@@ -106,6 +109,8 @@ git clone https://github.com/BraedenBDev/crawl-sim.git ~/.claude/skills/crawl-si
 /crawl-sim https://yoursite.com --category structured-data # category deep-dive
 /crawl-sim https://yoursite.com --json                     # JSON only (for CI)
 ```
+
+The skill auto-detects page type from the URL. Pass `--page-type root|detail|archive|faq|about|contact|generic` to the underlying `compute-score.sh` when the URL heuristic picks the wrong type (e.g., a homepage at `/en/` that URL-parses as `generic`).
 
 Output is a three-layer report:
 
@@ -219,6 +224,7 @@ crawl-sim/
 ├── bin/install.js         # npm installer
 ├── profiles/              # 9 verified bot profiles (JSON)
 ├── scripts/
+│   ├── _lib.sh            # shared helpers (URL parsing, page-type detection)
 │   ├── fetch-as-bot.sh    # curl with bot UA → JSON (status/headers/body/timing)
 │   ├── extract-meta.sh    # title, description, OG, headings, images
 │   ├── extract-jsonld.sh  # JSON-LD @type detection
@@ -228,8 +234,11 @@ crawl-sim/
 │   ├── check-sitemap.sh   # sitemap.xml URL inclusion
 │   ├── diff-render.sh     # optional Playwright server-vs-rendered comparison
 │   └── compute-score.sh   # aggregates all checks → per-bot + per-category scores
+├── test/
+│   ├── run-scoring-tests.sh  # 37-assertion bash harness (run with `npm test`)
+│   └── fixtures/             # synthetic RUN_DIR fixtures for regression tests
 ├── research/              # Verified bot data sources
-└── docs/specs/            # Design docs
+└── docs/                  # Design docs, issues, accuracy handoffs
 ```
 
 The shell scripts are the plumbing. The Claude Code skill is the intelligence — it reads the raw JSON, understands framework context (Next.js, Nuxt, SPAs), identifies root causes, and writes actionable recommendations.
