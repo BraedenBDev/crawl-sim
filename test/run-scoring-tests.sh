@@ -111,6 +111,21 @@ else
   fail "compute-score.sh exited non-zero on root-minimal"
 fi
 
+case_begin "AC6: root with forbidden schemas (Article + FAQPage) is penalized"
+if OUT=$(run_score root-overreaching 2>/dev/null); then
+  SCORE=$(printf '%s' "$OUT" | jq -r '.bots.googlebot.categories.structuredData.score')
+  PRESENT_FORBIDDEN=$(printf '%s' "$OUT" | jq -c '[.bots.googlebot.categories.structuredData.violations[] | select(.kind=="forbidden_schema") | .schema]')
+  VIOL_COUNT=$(printf '%s' "$OUT" | jq -r '[.bots.googlebot.categories.structuredData.violations[] | select(.kind=="forbidden_schema")] | length')
+  NOTES=$(printf '%s' "$OUT" | jq -r '.bots.googlebot.categories.structuredData.notes')
+  assert_lt "$SCORE" "100" "forbidden schemas drop structuredData below perfect"
+  assert_eq "$VIOL_COUNT" "2" "two forbidden-schema violations (Article + FAQPage)"
+  assert_contains "$PRESENT_FORBIDDEN" "Article" "violations mention Article"
+  assert_contains "$PRESENT_FORBIDDEN" "FAQPage" "violations mention FAQPage"
+  assert_contains "$NOTES" "Forbidden schemas present" "notes explain the forbidden schemas"
+else
+  fail "compute-score.sh exited non-zero on root-overreaching"
+fi
+
 case_begin "AC2+AC5: --page-type detail on same content scores low and flags missing schemas"
 if OUT=$(run_score root-minimal --page-type detail 2>/dev/null); then
   SCORE=$(printf '%s' "$OUT" | jq -r '.bots.googlebot.categories.structuredData.score')

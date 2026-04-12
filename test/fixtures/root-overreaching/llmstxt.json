@@ -1,0 +1,12 @@
+{
+  "url": "https://example.com/",
+  "llmsTxt": {
+    "exists": true,
+    "hasTitle": true,
+    "hasDescription": true,
+    "urlCount": 8
+  },
+  "llmsFullTxt": {
+    "exists": false
+  }
+}
