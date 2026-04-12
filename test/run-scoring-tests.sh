@@ -135,6 +135,13 @@ else
   fail "compute-score.sh exited non-zero on root-minimal"
 fi
 
+case_begin "AC2 validation: invalid --page-type is rejected"
+if "$COMPUTE_SCORE" --page-type pizza "$SCRIPT_DIR/fixtures/root-minimal" >/dev/null 2>&1; then
+  fail "compute-score.sh accepted invalid --page-type value"
+else
+  pass "compute-score.sh rejected --page-type pizza with non-zero exit"
+fi
+
 case_begin "AC9: non-structured categories unchanged vs baseline golden"
 GOLDEN="$SCRIPT_DIR/fixtures/root-minimal/golden-non-structured.json"
 if OUT=$(run_score root-minimal 2>/dev/null); then
