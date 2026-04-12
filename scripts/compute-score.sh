@@ -53,6 +53,17 @@ while [ $# -gt 0 ]; do
 done
 
 RESULTS_DIR="${1:?Usage: compute-score.sh [--page-type <type>] <results-dir>}"
+
+if [ -n "$PAGE_TYPE_OVERRIDE" ]; then
+  case "$PAGE_TYPE_OVERRIDE" in
+    root|detail|archive|faq|about|contact|generic) ;;
+    *)
+      echo "Error: invalid --page-type '$PAGE_TYPE_OVERRIDE' (valid: root, detail, archive, faq, about, contact, generic)" >&2
+      exit 2
+      ;;
+  esac
+fi
+
 printf '[compute-score] aggregating %s\n' "$RESULTS_DIR" >&2
 
 if [ ! -d "$RESULTS_DIR" ]; then
@@ -584,13 +595,18 @@ CAT_TECHNICAL_GRADE=$(grade_for "$CAT_TECHNICAL_AVG")
 CAT_AI_GRADE=$(grade_for "$CAT_AI_AVG")
 
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+if [ -n "$PAGE_TYPE_OVERRIDE" ]; then
+  PAGE_TYPE_OVERRIDDEN_JSON="true"
+else
+  PAGE_TYPE_OVERRIDDEN_JSON="false"
+fi
 
 jq -n \
   --arg url "$TARGET_URL" \
   --arg timestamp "$TIMESTAMP" \
   --arg version "0.2.0" \
   --arg pageType "$PAGE_TYPE" \
-  --argjson pageTypeOverridden "$( [ -n "$PAGE_TYPE_OVERRIDE" ] && echo true || echo false )" \
+  --argjson pageTypeOverridden "$PAGE_TYPE_OVERRIDDEN_JSON" \
   --argjson overallScore "$OVERALL_SCORE" \
   --arg overallGrade "$OVERALL_GRADE" \
   --argjson bots "$BOTS_JSON" \
