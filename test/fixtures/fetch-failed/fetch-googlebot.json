@@ -1,0 +1,18 @@
+{
+  "url": "https://example.invalid/",
+  "bot": {
+    "id": "googlebot",
+    "name": "Googlebot",
+    "userAgent": "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+    "rendersJavaScript": true
+  },
+  "fetchFailed": true,
+  "error": "curl: (6) Could not resolve host: example.invalid",
+  "curlExitCode": 6,
+  "status": 0,
+  "timing": { "total": 0, "ttfb": 0 },
+  "size": 0,
+  "wordCount": 0,
+  "headers": {},
+  "bodyBase64": ""
+}

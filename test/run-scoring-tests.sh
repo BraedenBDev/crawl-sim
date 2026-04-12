@@ -196,6 +196,26 @@ else
   fail "compute-score.sh exited non-zero with --page-type detail"
 fi
 
+# ----- Sprint A: fetchFailed handling (Issue #11) -----
+
+case_begin "AC-A3: compute-score.sh handles fetchFailed: true — grades F with score 0"
+if OUT=$(run_score fetch-failed 2>/dev/null); then
+  FETCH_FAILED=$(printf '%s' "$OUT" | jq -r '.bots.googlebot.fetchFailed // false')
+  BOT_SCORE=$(printf '%s' "$OUT" | jq -r '.bots.googlebot.score')
+  BOT_GRADE=$(printf '%s' "$OUT" | jq -r '.bots.googlebot.grade')
+  ACC_SCORE=$(printf '%s' "$OUT" | jq -r '.bots.googlebot.categories.accessibility.score')
+  CONTENT_SCORE=$(printf '%s' "$OUT" | jq -r '.bots.googlebot.categories.contentVisibility.score')
+  STRUCTURED_SCORE=$(printf '%s' "$OUT" | jq -r '.bots.googlebot.categories.structuredData.score')
+  assert_eq "$FETCH_FAILED" "true" "bot-level fetchFailed flag propagated"
+  assert_eq "$BOT_SCORE" "0" "fetchFailed bot composite score = 0"
+  assert_eq "$BOT_GRADE" "F" "fetchFailed bot grade = F"
+  assert_eq "$ACC_SCORE" "0" "fetchFailed accessibility = 0"
+  assert_eq "$CONTENT_SCORE" "0" "fetchFailed contentVisibility = 0"
+  assert_eq "$STRUCTURED_SCORE" "0" "fetchFailed structuredData = 0"
+else
+  fail "compute-score.sh exited non-zero on fetch-failed fixture"
+fi
+
 # ----- Summary -----
 
 printf '\n================================================\n'
