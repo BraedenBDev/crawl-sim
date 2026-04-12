@@ -7,13 +7,13 @@
 [![Built for Claude Code](https://img.shields.io/badge/built%20for-Claude%20Code-D97757.svg)](https://claude.com/claude-code)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
 
-Google renders your JavaScript. GPTBot, ClaudeBot, and PerplexityBot don't — they read server HTML and move on. If your content lives behind client-side hydration, AI search engines cite your competitors instead of you. Cloudflare blocks AI training crawlers by default on 20% of the web. ChatGPT-User and Perplexity-User ignore robots.txt for user-initiated fetches. Your blocking rules may not be doing what you think.
+Google renders your JavaScript. GPTBot, ClaudeBot, and PerplexityBot don't. They read server HTML and move on. If your content lives behind client-side hydration, AI search engines cite your competitors instead of you. Cloudflare blocks AI training crawlers by default on 20% of the web. ChatGPT-User and Perplexity-User ignore robots.txt for user-initiated fetches. Your blocking rules may not be doing what you think.
 
-`crawl-sim` was built from a real bug: `ssr: false` on a dynamic import was hiding article cards from every AI crawler on a production site. Screaming Frog didn't catch it — it only simulates Googlebot. The fix took two minutes once we could see the problem. Finding the problem took weeks.
+`crawl-sim` was built from a real bug: `ssr: false` on a dynamic import was hiding article cards from every AI crawler on a production site. No existing tool caught it because the Googlebot view looked fine. The fix took two minutes once we could see the problem. Finding the problem took weeks.
 
 This is for developers checking their own sites, agencies who need to show clients the gap with numbers, and SEO teams adding GEO to their toolkit.
 
-Ships as a [Claude Code plugin](https://docs.claude.com/en/docs/claude-code/plugins). Scripts run in bash (`curl` + `jq`), not in your context window — scoring and extraction cost zero tokens.
+Ships as a [Claude Code plugin](https://docs.claude.com/en/docs/claude-code/plugins). Scoring, extraction, and validation run in bash, not in your context window. A full audit uses ~2,500 output tokens vs ~10,000+ if Claude wrote the pipeline from scratch each time.
 
 ---
 
@@ -68,11 +68,11 @@ Every script is standalone:
 ## Features
 
 - **9 bot profiles** with verified UA strings, robots.txt enforceability classification, and Cloudflare tier mapping
-- **Scored 0–100** across five categories (accessibility, content, structured data, technical, AI readiness) with page-type-aware schema rubrics
-- **Cross-bot parity** — measures whether all bots see the same content; surfaces CSR gaps as the headline finding
-- **PDF reports + competitive comparisons** — `--pdf` and `--compare <url2>` for client-facing output
+- **Scored 0-100** across five categories (accessibility, content, structured data, technical, AI readiness) with page-type-aware schema rubrics
+- **Cross-bot parity** measures whether all bots see the same content and surfaces CSR gaps as the headline finding
+- **PDF reports + competitive comparisons** via `--pdf` and `--compare <url2>` for client-facing output
 - **70 regression tests** covering scoring, field validation, parity, critical-fail criteria
-- **Shell-native** — `curl` + `jq` only, no runtime dependencies
+- **Shell-native** with `curl` + `jq` only, no runtime dependencies
 
 ---
 
@@ -86,7 +86,7 @@ Every script is standalone:
 | Technical Signals | 15% | title, description, canonical, OG, sitemap |
 | AI Readiness | 10% | llms.txt / llms-full.txt presence and structure |
 
-Composite weighs Googlebot 40%, GPTBot/ClaudeBot/PerplexityBot 20% each. Cross-bot parity scored separately — a 10x word-count gap between Googlebot and AI bots is the finding that matters most.
+Composite weighs Googlebot 40%, GPTBot/ClaudeBot/PerplexityBot 20% each. Cross-bot parity scored separately. A 10x word-count gap between Googlebot and AI bots is the finding that matters most.
 
 ---
 
@@ -116,14 +116,14 @@ Sources: [`research/bot-profiles-verified.md`](./research/bot-profiles-verified.
 
 ```
 crawl-sim/
-├── .claude-plugin/            # plugin manifest
+├── .claude-plugin/            plugin manifest
 ├── skills/crawl-sim/
-│   ├── SKILL.md               # orchestrator
-│   ├── profiles/              # 9 bot profiles
-│   └── scripts/               # 15 scripts (fetch, extract, check, score, report, pdf)
-├── test/                      # 70 assertions + synthetic fixtures
-├── docs/output-schemas.md     # JSON contracts
-└── bin/install.js             # npm installer
+│   ├── SKILL.md               orchestrator
+│   ├── profiles/              9 bot profiles
+│   └── scripts/               15 scripts (fetch, extract, check, score, report, pdf)
+├── test/                      70 assertions + synthetic fixtures
+├── docs/output-schemas.md     JSON contracts
+└── bin/install.js             npm installer
 ```
 
 ---
@@ -131,6 +131,12 @@ crawl-sim/
 ## Contributing
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md). Core rules: `curl` + `jq` only, JSON to stdout, cite sources for bot profile claims.
+
+---
+
+## Acknowledgments
+
+Bot documentation from [OpenAI](https://developers.openai.com/api/docs/bots), [Anthropic](https://privacy.claude.com), [Perplexity](https://docs.perplexity.ai/docs/resources/perplexity-crawlers), and [Google Search Central](https://developers.google.com/search/docs). Cloudflare bot classification from [Cloudflare Radar](https://radar.cloudflare.com/bots) and [Cloudflare Docs](https://developers.cloudflare.com/bots/concepts/bot/). Built with [Claude Code](https://claude.com/claude-code).
 
 ---
 
