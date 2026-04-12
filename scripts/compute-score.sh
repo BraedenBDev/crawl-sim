@@ -600,6 +600,44 @@ CAT_STRUCTURED_GRADE=$(grade_for "$CAT_STRUCTURED_AVG")
 CAT_TECHNICAL_GRADE=$(grade_for "$CAT_TECHNICAL_AVG")
 CAT_AI_GRADE=$(grade_for "$CAT_AI_AVG")
 
+# --- Cross-bot content parity (C4) ---
+PARITY_MIN_WORDS=999999999
+PARITY_MAX_WORDS=0
+PARITY_BOT_COUNT=0
+for bot_id in $BOTS; do
+  FETCH="$RESULTS_DIR/fetch-$bot_id.json"
+  P_FETCH_FAILED=$(jget_bool "$FETCH" '.fetchFailed')
+  [ "$P_FETCH_FAILED" = "true" ] && continue
+  WC=$(jget_num "$FETCH" '.wordCount')
+  [ "$WC" -lt "$PARITY_MIN_WORDS" ] && PARITY_MIN_WORDS=$WC
+  [ "$WC" -gt "$PARITY_MAX_WORDS" ] && PARITY_MAX_WORDS=$WC
+  PARITY_BOT_COUNT=$((PARITY_BOT_COUNT + 1))
+done
+
+if [ "$PARITY_BOT_COUNT" -le 1 ]; then
+  PARITY_SCORE=100
+  PARITY_MAX_DELTA=0
+elif [ "$PARITY_MAX_WORDS" -gt 0 ]; then
+  PARITY_SCORE=$(awk -v min="$PARITY_MIN_WORDS" -v max="$PARITY_MAX_WORDS" \
+    'BEGIN { printf "%d", (min / max) * 100 + 0.5 }')
+  PARITY_MAX_DELTA=$(awk -v min="$PARITY_MIN_WORDS" -v max="$PARITY_MAX_WORDS" \
+    'BEGIN { printf "%d", ((max - min) / max) * 100 + 0.5 }')
+else
+  PARITY_SCORE=100
+  PARITY_MAX_DELTA=0
+fi
+
+[ "$PARITY_SCORE" -gt 100 ] && PARITY_SCORE=100
+PARITY_GRADE=$(grade_for "$PARITY_SCORE")
+
+if [ "$PARITY_SCORE" -ge 95 ]; then
+  PARITY_INTERP="Content is consistent across all bots."
+elif [ "$PARITY_SCORE" -ge 50 ]; then
+  PARITY_INTERP="Moderate content divergence between bots — likely partial client-side rendering hydration."
+else
+  PARITY_INTERP="Severe content divergence — site likely relies on client-side rendering. AI bots see significantly less content than Googlebot."
+fi
+
 # --- Warnings (H2) ---
 WARNINGS="[]"
 if [ "$DIFF_AVAILABLE" != "true" ]; then
@@ -638,6 +676,12 @@ jq -n \
   --argjson catAi "$CAT_AI_AVG" \
   --arg catAiGrade "$CAT_AI_GRADE" \
   --argjson warnings "$WARNINGS" \
+  --argjson parityScore "$PARITY_SCORE" \
+  --arg parityGrade "$PARITY_GRADE" \
+  --argjson parityMinWords "$PARITY_MIN_WORDS" \
+  --argjson parityMaxWords "$PARITY_MAX_WORDS" \
+  --argjson parityMaxDelta "$PARITY_MAX_DELTA" \
+  --arg parityInterp "$PARITY_INTERP" \
   '{
     url: $url,
     timestamp: $timestamp,
@@ -645,6 +689,14 @@ jq -n \
     pageType: $pageType,
     pageTypeOverridden: ($pageTypeOverride | length > 0),
     overall: { score: $overallScore, grade: $overallGrade },
+    parity: {
+      score: $parityScore,
+      grade: $parityGrade,
+      minWords: (if $parityMinWords >= 999999999 then 0 else $parityMinWords end),
+      maxWords: $parityMaxWords,
+      maxDeltaPct: $parityMaxDelta,
+      interpretation: $parityInterp
+    },
     warnings: $warnings,
     bots: $bots,
     categories: {
