@@ -93,11 +93,9 @@ jq -n \
   --argjson internalSample "$INTERNAL_SAMPLE" \
   --argjson externalSample "$EXTERNAL_SAMPLE" \
   '{
-    counts: {
-      internal: $internalCount,
-      external: $externalCount,
-      total: ($internalCount + $externalCount)
-    },
-    internal: $internalSample,
-    external: $externalSample
+    total: ($internalCount + $externalCount),
+    internal: $internalCount,
+    external: $externalCount,
+    internalUrls: $internalSample,
+    externalUrls: $externalSample
   }'

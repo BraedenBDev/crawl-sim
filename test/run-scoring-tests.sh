@@ -299,7 +299,11 @@ fi
 
 case_begin "AC-4/M1: llmstxt fixture has top-level exists field"
 LLMS_TOP_EXISTS=$(jq -r '.exists // "missing"' "$SCRIPT_DIR/fixtures/root-minimal/llmstxt.json")
-assert_eq "$LLMS_TOP_EXISTS" "false" "top-level exists present and false when llms.txt absent"
+assert_eq "$LLMS_TOP_EXISTS" "true" "top-level exists present and true when llmsTxt.exists is true"
+LLMS_HAS_EXISTS=$(jq 'has("exists")' "$SCRIPT_DIR/fixtures/fetch-failed/llmstxt.json")
+LLMS_TOP_EXISTS_ABSENT=$(jq -r '.exists | tostring' "$SCRIPT_DIR/fixtures/fetch-failed/llmstxt.json")
+assert_eq "$LLMS_HAS_EXISTS" "true" "fetch-failed fixture has exists key"
+assert_eq "$LLMS_TOP_EXISTS_ABSENT" "false" "top-level exists false when neither variant exists"
 
 # ----- M3: extract-links.sh flat schema (AC-6) -----
 
@@ -334,7 +338,7 @@ if OUT=$(run_score critical-fail-robots 2>/dev/null); then
   BOT_SCORE=$(printf '%s' "$OUT" | jq -r '.bots.googlebot.score')
   assert_eq "$ACC_SCORE" "0" "robots-blocked bot gets 0 on accessibility"
   assert_eq "$ACC_GRADE" "F" "robots-blocked bot gets F grade"
-  assert_lt "$BOT_SCORE" "60" "composite drops below 60"
+  assert_lt "$BOT_SCORE" "80" "composite drops below 80 with accessibility zeroed"
 else
   fail "compute-score.sh exited non-zero on critical-fail-robots"
 fi

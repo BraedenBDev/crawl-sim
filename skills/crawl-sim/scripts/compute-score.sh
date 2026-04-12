@@ -345,10 +345,15 @@ for bot_id in $BOTS; do
 
   # --- Category 1: Accessibility (0-100) ---
   ACC=0
-  [ "$ROBOTS_ALLOWED" = "true" ] && ACC=$((ACC + 40))
-  [ "$STATUS" = "200" ] && ACC=$((ACC + 40))
-  TIME_SCORE=$(awk -v t="$TOTAL_TIME" 'BEGIN { if (t < 2) print 20; else if (t < 5) print 10; else print 0 }')
-  ACC=$((ACC + TIME_SCORE))
+  if [ "$ROBOTS_ALLOWED" != "true" ]; then
+    # R4 critical-fail: robots blocking overrides accessibility to 0/F
+    ACC=0
+  else
+    ACC=$((ACC + 40))
+    [ "$STATUS" = "200" ] && ACC=$((ACC + 40))
+    TIME_SCORE=$(awk -v t="$TOTAL_TIME" 'BEGIN { if (t < 2) print 20; else if (t < 5) print 10; else print 0 }')
+    ACC=$((ACC + TIME_SCORE))
+  fi
 
   # --- Category 2: Content Visibility (0-100) ---
   CONTENT=0
@@ -439,7 +444,7 @@ for bot_id in $BOTS; do
         if ! list_contains "$field" $BLOCK_FIELDS; then
           FIELD_VIOLATIONS_JSON=$(printf '%s' "$FIELD_VIOLATIONS_JSON" | jq \
             --arg schema "$BLOCK_TYPE" --arg field "$field" \
-            '. + [{kind: "missing_required_field", schema: $schema, field: $field, impact: -5}]')
+            '. + [{kind: "missing_required_field", schema: $schema, field: $field, impact: -5, confidence: "high"}]')
           FIELD_PENALTY=$((FIELD_PENALTY + 5))
         fi
       done
@@ -502,9 +507,9 @@ for bot_id in $BOTS; do
       missing:    ($missingList    | to_arr),
       extras:     ($extrasList     | to_arr),
       violations: (
-        ($forbiddenPresent | to_arr | map({kind: "forbidden_schema", schema: ., impact: -10}))
+        ($forbiddenPresent | to_arr | map({kind: "forbidden_schema", schema: ., impact: -10, confidence: "high"}))
         + (if $validPenalty > 0
-             then [{kind: "invalid_jsonld", count: $invalidCount, impact: (0 - $validPenalty)}]
+             then [{kind: "invalid_jsonld", count: $invalidCount, impact: (0 - $validPenalty), confidence: "high"}]
              else []
            end)
         + $fieldViolations
