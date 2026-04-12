@@ -4,7 +4,7 @@
   "vendor": "Perplexity",
   "userAgent": "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; PerplexityBot/1.0; +https://perplexity.ai/perplexitybot)",
   "robotsTxtToken": "PerplexityBot",
-  "purpose": "search-indexing",
+  "purpose": "search",
   "rendersJavaScript": false,
   "respectsRobotsTxt": true,
   "crawlDelaySupported": "unknown",
@@ -23,6 +23,10 @@
     }
   },
   "lastVerified": "2026-04-11",
-  "relatedBots": ["perplexity-user"],
-  "notes": "Designed to surface and link websites in search results on Perplexity. NOT used to crawl content for AI foundation models. Changes may take up to 24 hours to reflect."
+  "relatedBots": [
+    "perplexity-user"
+  ],
+  "notes": "Designed to surface and link websites in search results on Perplexity. NOT used to crawl content for AI foundation models. Changes may take up to 24 hours to reflect.",
+  "cloudflareCategory": "ai_search",
+  "robotsTxtEnforceability": "stealth_risk"
 }

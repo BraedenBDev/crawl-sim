@@ -214,11 +214,17 @@ Then produce **prioritized findings** ranked by total point impact across bots:
 - **Framework detection.** Scan the HTML body for signals: `<meta name="next-head-count">` or `_next/static` → Next.js (Pages Router or App Router respectively), `<div id="__nuxt">` → Nuxt, `<div id="app">` with thin content → SPA (Vue/React CSR), `<!--$-->` placeholder tags → React 18 Suspense. Use these to tailor fix recommendations.
 - **No speculation beyond the data.** If server HTML has 0 `<a>` tags inside a component, say "component not present in server HTML" — not "JavaScript hydration failed" unless the diff-render data proves it.
 - **Known extractor limitations.** The bash meta extractor sometimes reports `h1Text: null` even when `h1.count: 1` — that happens when the H1 contains nested tags (`<br>`, `<span>`, `<svg>`). The count is still correct. Don't flag this as a site bug — it's tracked in GitHub issue #4.
+- **robots.txt enforceability.** Each bot in the score output carries `robotsTxtEnforceability` — one of `enforced`, `advisory_only`, or `stealth_risk`. When robots blocks a bot:
+  - `enforced`: The block works. State it directly: *"GPTBot is blocked by robots.txt."*
+  - `advisory_only`: The block is unenforceable via robots.txt alone. Flag it: *"robots.txt blocks ChatGPT-User, but OpenAI has stated user-initiated fetches may not respect robots.txt. Network-level enforcement (e.g., Cloudflare WAF rules) is needed to actually block this bot."*
+  - `stealth_risk`: The bot claims compliance but has been caught bypassing. Note: *"PerplexityBot is blocked by robots.txt, but Cloudflare has documented instances of Perplexity using undeclared crawlers with generic user-agent strings to access blocked sites."*
+- **Cloudflare context.** Since July 2025, Cloudflare blocks all AI training crawlers (GPTBot, ClaudeBot, CCBot, etc.) **by default** for new domains (~20% of the web). If a site uses Cloudflare, robots.txt may be redundant for training bots — the CDN blocks them at the network level before they reach the origin. The score output's `cloudflareCategory` field (`ai_crawler`, `ai_search`, `ai_assistant`) indicates which tier each bot falls into.
 - **Per-bot quirks to surface:**
   - Googlebot: renders JS. If `diff-render.sh` was skipped, note that comparison was unavailable and recommend installing Playwright.
   - GPTBot / ClaudeBot / PerplexityBot: `rendersJavaScript: false` at observed confidence — flag any server-vs-rendered delta as invisible-to-AI content.
-  - `chatgpt-user` / `perplexity-user`: officially ignore robots.txt for user-initiated fetches. Blocking these via robots.txt has no effect.
-  - PerplexityBot: third-party reports of stealth/undeclared crawling. Mention if relevant, don't assert.
+  - `chatgpt-user` / `perplexity-user`: `robotsTxtEnforceability: advisory_only`. Blocking these via robots.txt alone has no effect — always flag this in findings.
+  - `claude-user`: Anthropic is notably stricter — commits to respecting robots.txt even for user-initiated fetches (`robotsTxtEnforceability: enforced`).
+  - PerplexityBot: `robotsTxtEnforceability: stealth_risk` — third-party and Cloudflare reports of stealth/undeclared crawling. Mention if relevant, don't assert.
 
 After findings, write a **Summary** paragraph: what's working well, biggest wins, confidence caveats. Keep it short — two to three sentences.
 

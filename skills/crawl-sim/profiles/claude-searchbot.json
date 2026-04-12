@@ -23,6 +23,11 @@
     }
   },
   "lastVerified": "2026-04-11",
-  "relatedBots": ["claudebot", "claude-user"],
-  "notes": "Navigates the web to improve search result quality. Focused on search indexing, not training."
+  "relatedBots": [
+    "claudebot",
+    "claude-user"
+  ],
+  "notes": "Navigates the web to improve search result quality. Focused on search indexing, not training.",
+  "cloudflareCategory": "ai_search",
+  "robotsTxtEnforceability": "enforced"
 }

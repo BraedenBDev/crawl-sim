@@ -15,6 +15,8 @@ BOT_ID=$(jq -r '.id' "$PROFILE")
 BOT_NAME=$(jq -r '.name' "$PROFILE")
 UA=$(jq -r '.userAgent' "$PROFILE")
 RENDERS_JS=$(jq -r '.rendersJavaScript' "$PROFILE")
+PURPOSE=$(jq -r '.purpose // "unknown"' "$PROFILE")
+ROBOTS_ENFORCE=$(jq -r '.robotsTxtEnforceability // "unknown"' "$PROFILE")
 
 TMPDIR="${TMPDIR:-/tmp}"
 HEADERS_FILE=$(mktemp "$TMPDIR/crawlsim-headers.XXXXXX")
@@ -48,6 +50,8 @@ if [ "$CURL_EXIT" -ne 0 ]; then
     --arg botName "$BOT_NAME" \
     --arg ua "$UA" \
     --arg rendersJs "$RENDERS_JS" \
+    --arg purpose "$PURPOSE" \
+    --arg robotsEnforce "$ROBOTS_ENFORCE" \
     --arg error "$CURL_ERR" \
     --argjson exitCode "$CURL_EXIT" \
     '{
@@ -56,7 +60,9 @@ if [ "$CURL_EXIT" -ne 0 ]; then
         id: $botId,
         name: $botName,
         userAgent: $ua,
-        rendersJavaScript: (if $rendersJs == "true" then true elif $rendersJs == "false" then false else $rendersJs end)
+        rendersJavaScript: (if $rendersJs == "true" then true elif $rendersJs == "false" then false else $rendersJs end),
+        purpose: $purpose,
+        robotsTxtEnforceability: $robotsEnforce
       },
       fetchFailed: true,
       error: $error,
@@ -121,6 +127,8 @@ jq -n \
   --arg botName "$BOT_NAME" \
   --arg ua "$UA" \
   --arg rendersJs "$RENDERS_JS" \
+  --arg purpose "$PURPOSE" \
+  --arg robotsEnforce "$ROBOTS_ENFORCE" \
   --argjson status "$STATUS" \
   --argjson totalTime "$TOTAL_TIME" \
   --argjson ttfb "$TTFB" \
@@ -137,7 +145,9 @@ jq -n \
       id: $botId,
       name: $botName,
       userAgent: $ua,
-      rendersJavaScript: (if $rendersJs == "true" then true elif $rendersJs == "false" then false else $rendersJs end)
+      rendersJavaScript: (if $rendersJs == "true" then true elif $rendersJs == "false" then false else $rendersJs end),
+      purpose: $purpose,
+      robotsTxtEnforceability: $robotsEnforce
     },
     status: $status,
     timing: { total: $totalTime, ttfb: $ttfb },
