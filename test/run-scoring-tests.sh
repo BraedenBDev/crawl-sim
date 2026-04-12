@@ -237,6 +237,32 @@ else
   fail "redirectChain field missing from fetch output"
 fi
 
+# ----- Sprint B: C4 cross-bot parity (AC-B3, AC-B4) -----
+
+case_begin "AC-B4: cross-bot parity — high divergence (10x word count) scores low"
+if OUT=$(run_score parity-mismatch 2>/dev/null); then
+  PARITY_SCORE=$(printf '%s' "$OUT" | jq -r '.parity.score')
+  PARITY_GRADE=$(printf '%s' "$OUT" | jq -r '.parity.grade')
+  PARITY_MAX_DELTA=$(printf '%s' "$OUT" | jq -r '.parity.maxDeltaPct')
+  PARITY_INTERP=$(printf '%s' "$OUT" | jq -r '.parity.interpretation')
+  assert_lt "$PARITY_SCORE" "50" "parity score below 50 when 10x word count gap"
+  assert_eq "$PARITY_GRADE" "F" "parity grade F for severe divergence"
+  assert_ge "$PARITY_MAX_DELTA" "80" "maxDeltaPct reflects 90% content difference"
+  assert_contains "$PARITY_INTERP" "client-side rendering" "interpretation mentions CSR"
+else
+  fail "compute-score.sh exited non-zero on parity-mismatch"
+fi
+
+case_begin "AC-B3: cross-bot parity — single bot has perfect parity"
+if OUT=$(run_score root-minimal 2>/dev/null); then
+  PARITY_SCORE=$(printf '%s' "$OUT" | jq -r '.parity.score')
+  PARITY_GRADE=$(printf '%s' "$OUT" | jq -r '.parity.grade')
+  assert_eq "$PARITY_SCORE" "100" "single-bot fixture has perfect parity"
+  assert_eq "$PARITY_GRADE" "A" "parity grade A for perfect parity"
+else
+  fail "compute-score.sh exited non-zero on root-minimal for parity"
+fi
+
 # ----- Sprint B: H2 diff-render warning (AC-B5) -----
 
 case_begin "AC-B5: missing diff-render.json emits a warning"
