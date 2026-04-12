@@ -44,21 +44,34 @@ The concept was validated manually: a curl-as-GPTBot + Claude analysis caught a 
 
 ## Quick start
 
-### In Claude Code (recommended)
+### As a Claude Code plugin (recommended)
 
-```bash
-npm install -g @braedenbuilds/crawl-sim
-crawl-sim install              # → ~/.claude/skills/crawl-sim/
-crawl-sim install --project    # → .claude/skills/crawl-sim/
+```
+/plugin install BraedenBDev/crawl-sim@github
 ```
 
-Then in Claude Code:
+Or add as a marketplace for easy updates:
+
+```
+/plugin marketplace add BraedenBDev/crawl-sim
+/plugin install crawl-sim@crawl-sim
+```
+
+Then invoke:
 
 ```
 /crawl-sim https://yoursite.com
 ```
 
 Claude runs the full pipeline, interprets the results, and returns a score card plus prioritized findings.
+
+### Via npm (alternative)
+
+```bash
+npm install -g @braedenbuilds/crawl-sim
+crawl-sim install              # → ~/.claude/skills/crawl-sim/
+crawl-sim install --project    # → .claude/skills/crawl-sim/
+```
 
 > **Why `npm install -g` instead of `npx`?** Recent versions of npx have a known issue linking bins for scoped single-bin packages in ephemeral installs. A persistent global install avoids the problem entirely. The git clone path below is the zero-npm fallback.
 

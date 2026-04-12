@@ -21,6 +21,8 @@ set -eu
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=_lib.sh
 . "$SCRIPT_DIR/_lib.sh"
+# shellcheck source=schema-fields.sh
+. "$SCRIPT_DIR/schema-fields.sh"
 
 PAGE_TYPE_OVERRIDE=""
 while [ $# -gt 0 ]; do
@@ -276,6 +278,40 @@ for bot_id in $BOTS; do
   ROBOTS="$RESULTS_DIR/robots-$bot_id.json"
 
   BOT_NAME=$(jget "$FETCH" '.bot.name' "$bot_id")
+
+  # Check for fetch failure — skip scoring, emit F grade (AC-A3)
+  FETCH_FAILED=$(jget_bool "$FETCH" '.fetchFailed')
+  if [ "$FETCH_FAILED" = "true" ]; then
+    FETCH_ERROR=$(jget "$FETCH" '.error' "unknown error")
+    RENDERS_JS=$(jq -r '.bot.rendersJavaScript | if . == null then "unknown" else tostring end' "$FETCH" 2>/dev/null || echo "unknown")
+    BOT_OBJ=$(jq -n \
+      --arg id "$bot_id" \
+      --arg name "$BOT_NAME" \
+      --arg rendersJs "$RENDERS_JS" \
+      --arg error "$FETCH_ERROR" \
+      '{
+        id: $id,
+        name: $name,
+        rendersJavaScript: (if $rendersJs == "true" then true elif $rendersJs == "false" then false else $rendersJs end),
+        fetchFailed: true,
+        error: $error,
+        score: 0,
+        grade: "F",
+        visibility: { serverWords: 0, effectiveWords: 0, missedWordsVsRendered: 0, hydrationPenaltyPts: 0 },
+        categories: {
+          accessibility:     { score: 0, grade: "F" },
+          contentVisibility: { score: 0, grade: "F" },
+          structuredData:    { score: 0, grade: "F", pageType: "unknown", expected: [], optional: [], forbidden: [], present: [], missing: [], extras: [], violations: [{ kind: "fetch_failed", impact: -100 }], calculation: "fetch failed — no data to score", notes: ("Fetch failed: " + $error) },
+          technicalSignals:  { score: 0, grade: "F" },
+          aiReadiness:       { score: 0, grade: "F" }
+        }
+      }')
+    BOTS_JSON=$(printf '%s' "$BOTS_JSON" | jq --argjson bot "$BOT_OBJ" --arg id "$bot_id" '.[$id] = $bot')
+    printf '[compute-score] %s: fetch failed, scoring as F\n' "$bot_id" >&2
+    CAT_N=$((CAT_N + 1))
+    continue
+  fi
+
   STATUS=$(jget_num "$FETCH" '.status')
   TOTAL_TIME=$(jget_num "$FETCH" '.timing.total')
   SERVER_WORD_COUNT=$(jget_num "$FETCH" '.wordCount')
@@ -376,15 +412,42 @@ for bot_id in $BOTS; do
     [ $VALID_PENALTY -gt 20 ] && VALID_PENALTY=20
   fi
 
-  STRUCTURED=$((BASE + BONUS - FORBID_PENALTY - VALID_PENALTY))
+  # Field-level validation (C3): check required fields per schema type
+  FIELD_PENALTY=0
+  FIELD_VIOLATIONS_JSON="[]"
+  BLOCK_COUNT_FOR_FIELDS=0
+  if [ -f "$JSONLD" ]; then
+    BLOCK_COUNT_FOR_FIELDS=$(jq 'if has("blocks") then .blocks | length else 0 end' "$JSONLD" 2>/dev/null || echo "0")
+  fi
+  if [ "$BLOCK_COUNT_FOR_FIELDS" -gt 0 ]; then
+    i=0
+    while [ "$i" -lt "$BLOCK_COUNT_FOR_FIELDS" ]; do
+      BLOCK_TYPE=$(jq -r ".blocks[$i].type" "$JSONLD" 2>/dev/null || echo "")
+      BLOCK_FIELDS=$(jq -r ".blocks[$i].fields[]?" "$JSONLD" 2>/dev/null | tr '\n' ' ')
+      REQUIRED=$(required_fields_for "$BLOCK_TYPE")
+      for field in $REQUIRED; do
+        # shellcheck disable=SC2086
+        if ! list_contains "$field" $BLOCK_FIELDS; then
+          FIELD_VIOLATIONS_JSON=$(printf '%s' "$FIELD_VIOLATIONS_JSON" | jq \
+            --arg schema "$BLOCK_TYPE" --arg field "$field" \
+            '. + [{kind: "missing_required_field", schema: $schema, field: $field, impact: -5}]')
+          FIELD_PENALTY=$((FIELD_PENALTY + 5))
+        fi
+      done
+      i=$((i + 1))
+    done
+  fi
+  [ $FIELD_PENALTY -gt 30 ] && FIELD_PENALTY=30
+
+  STRUCTURED=$((BASE + BONUS - FORBID_PENALTY - VALID_PENALTY - FIELD_PENALTY))
   [ $STRUCTURED -gt 100 ] && STRUCTURED=100
   [ $STRUCTURED -lt 0 ] && STRUCTURED=0
 
-  CALCULATION=$(printf 'base: %d/%d expected present = %d; +%d optional bonus; -%d forbidden penalty; -%d validity penalty; clamp [0,100] = %d' \
+  CALCULATION=$(printf 'base: %d/%d expected present = %d; +%d optional bonus; -%d forbidden penalty; -%d validity penalty; -%d field penalty; clamp [0,100] = %d' \
     "$PRESENT_EXPECTED_COUNT" "$EXPECTED_COUNT" "$BASE" \
-    "$BONUS" "$FORBID_PENALTY" "$VALID_PENALTY" "$STRUCTURED")
+    "$BONUS" "$FORBID_PENALTY" "$VALID_PENALTY" "$FIELD_PENALTY" "$STRUCTURED")
 
-  if [ "$STRUCTURED" -ge 100 ] && [ -z "$PRESENT_FORBIDDEN" ] && [ "$VALID_PENALTY" -eq 0 ]; then
+  if [ "$STRUCTURED" -ge 100 ] && [ -z "$PRESENT_FORBIDDEN" ] && [ "$VALID_PENALTY" -eq 0 ] && [ "$FIELD_PENALTY" -eq 0 ]; then
     NOTES="All expected schemas for pageType=$PAGE_TYPE are present. No structured-data action needed."
   elif [ -n "$MISSING_EXPECTED" ] && [ -z "$PRESENT_FORBIDDEN" ]; then
     NOTES="Missing expected schemas for pageType=$PAGE_TYPE: $MISSING_EXPECTED. Add these to raise the score."
@@ -392,8 +455,12 @@ for bot_id in $BOTS; do
     NOTES="Forbidden schemas present for pageType=$PAGE_TYPE: $PRESENT_FORBIDDEN. Remove these (or re-classify the page type with --page-type)."
   elif [ -n "$PRESENT_FORBIDDEN" ] && [ -n "$MISSING_EXPECTED" ]; then
     NOTES="Mixed: missing $MISSING_EXPECTED and forbidden present $PRESENT_FORBIDDEN for pageType=$PAGE_TYPE."
-  else
+  elif [ "$FIELD_PENALTY" -gt 0 ]; then
+    NOTES="Schemas for pageType=$PAGE_TYPE are present but missing required fields. See violations for details."
+  elif [ "$VALID_PENALTY" -gt 0 ]; then
     NOTES="Score reduced by $VALID_PENALTY pts due to invalid JSON-LD blocks."
+  else
+    NOTES="Structured data scored for pageType=$PAGE_TYPE."
   fi
 
   STRUCTURED_GRADE=$(grade_for "$STRUCTURED")
@@ -410,6 +477,7 @@ for bot_id in $BOTS; do
     --arg forbiddenPresent "$PRESENT_FORBIDDEN" \
     --argjson invalidCount "$JSONLD_INVALID" \
     --argjson validPenalty "$VALID_PENALTY" \
+    --argjson fieldViolations "$FIELD_VIOLATIONS_JSON" \
     --arg calculation "$CALCULATION" \
     --arg notes "$NOTES" \
     '
@@ -430,6 +498,7 @@ for bot_id in $BOTS; do
              then [{kind: "invalid_jsonld", count: $invalidCount, impact: (0 - $validPenalty)}]
              else []
            end)
+        + $fieldViolations
       ),
       calculation: $calculation,
       notes: $notes
@@ -566,6 +635,60 @@ CAT_STRUCTURED_GRADE=$(grade_for "$CAT_STRUCTURED_AVG")
 CAT_TECHNICAL_GRADE=$(grade_for "$CAT_TECHNICAL_AVG")
 CAT_AI_GRADE=$(grade_for "$CAT_AI_AVG")
 
+# --- Cross-bot content parity (C4) ---
+PARITY_MIN_WORDS=999999999
+PARITY_MAX_WORDS=0
+PARITY_BOT_COUNT=0
+for bot_id in $BOTS; do
+  FETCH="$RESULTS_DIR/fetch-$bot_id.json"
+  P_FETCH_FAILED=$(jget_bool "$FETCH" '.fetchFailed')
+  [ "$P_FETCH_FAILED" = "true" ] && continue
+  WC=$(jget_num "$FETCH" '.wordCount')
+  [ "$WC" -lt "$PARITY_MIN_WORDS" ] && PARITY_MIN_WORDS=$WC
+  [ "$WC" -gt "$PARITY_MAX_WORDS" ] && PARITY_MAX_WORDS=$WC
+  PARITY_BOT_COUNT=$((PARITY_BOT_COUNT + 1))
+done
+
+if [ "$PARITY_BOT_COUNT" -le 1 ]; then
+  PARITY_SCORE=100
+  PARITY_MAX_DELTA=0
+elif [ "$PARITY_MAX_WORDS" -gt 0 ]; then
+  PARITY_SCORE=$(awk -v min="$PARITY_MIN_WORDS" -v max="$PARITY_MAX_WORDS" \
+    'BEGIN { printf "%d", (min / max) * 100 + 0.5 }')
+  PARITY_MAX_DELTA=$(awk -v min="$PARITY_MIN_WORDS" -v max="$PARITY_MAX_WORDS" \
+    'BEGIN { printf "%d", ((max - min) / max) * 100 + 0.5 }')
+else
+  PARITY_SCORE=100
+  PARITY_MAX_DELTA=0
+fi
+
+[ "$PARITY_SCORE" -gt 100 ] && PARITY_SCORE=100
+PARITY_GRADE=$(grade_for "$PARITY_SCORE")
+
+if [ "$PARITY_SCORE" -ge 95 ]; then
+  PARITY_INTERP="Content is consistent across all bots."
+elif [ "$PARITY_SCORE" -ge 50 ]; then
+  PARITY_INTERP="Moderate content divergence between bots — likely partial client-side rendering hydration."
+else
+  PARITY_INTERP="Severe content divergence — site likely relies on client-side rendering. AI bots see significantly less content than Googlebot."
+fi
+
+# --- Warnings (H2) ---
+WARNINGS="[]"
+if [ "$DIFF_AVAILABLE" != "true" ]; then
+  DIFF_REASON="not_found"
+  if [ -f "$DIFF_RENDER_FILE" ]; then
+    DIFF_REASON=$(jq -r '.reason // "skipped"' "$DIFF_RENDER_FILE" 2>/dev/null || echo "skipped")
+  fi
+  WARNINGS=$(printf '%s' "$WARNINGS" | jq --arg reason "$DIFF_REASON" \
+    '. + [{
+      code: "diff_render_unavailable",
+      severity: "high",
+      message: "JS rendering comparison was skipped. If this site uses CSR, non-JS bot scores may be inaccurate.",
+      reason: $reason
+    }]')
+fi
+
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 jq -n \
@@ -587,6 +710,13 @@ jq -n \
   --arg catTechnicalGrade "$CAT_TECHNICAL_GRADE" \
   --argjson catAi "$CAT_AI_AVG" \
   --arg catAiGrade "$CAT_AI_GRADE" \
+  --argjson warnings "$WARNINGS" \
+  --argjson parityScore "$PARITY_SCORE" \
+  --arg parityGrade "$PARITY_GRADE" \
+  --argjson parityMinWords "$PARITY_MIN_WORDS" \
+  --argjson parityMaxWords "$PARITY_MAX_WORDS" \
+  --argjson parityMaxDelta "$PARITY_MAX_DELTA" \
+  --arg parityInterp "$PARITY_INTERP" \
   '{
     url: $url,
     timestamp: $timestamp,
@@ -594,6 +724,15 @@ jq -n \
     pageType: $pageType,
     pageTypeOverridden: ($pageTypeOverride | length > 0),
     overall: { score: $overallScore, grade: $overallGrade },
+    parity: {
+      score: $parityScore,
+      grade: $parityGrade,
+      minWords: (if $parityMinWords >= 999999999 then 0 else $parityMinWords end),
+      maxWords: $parityMaxWords,
+      maxDeltaPct: $parityMaxDelta,
+      interpretation: $parityInterp
+    },
+    warnings: $warnings,
     bots: $bots,
     categories: {
       accessibility:     { score: $catAcc,        grade: $catAccGrade },

@@ -62,6 +62,7 @@ fi
 
 VALID_COUNT=0
 INVALID_COUNT=0
+BLOCKS_JSON="[]"
 
 if [ "$BLOCK_COUNT" -gt 0 ]; then
   while IFS= read -r block; do
@@ -79,6 +80,15 @@ if [ "$BLOCK_COUNT" -gt 0 ]; then
           else empty end;
         collect_types
       ' 2>/dev/null >> "$TYPES_FILE" || true
+
+      # Extract per-block type + top-level field names for field validation (AC-B1)
+      BLOCK_INFO=$(printf '%s' "$block" | jq -c '
+        {
+          type: (if has("@type") then (.["@type"] | if type == "array" then .[0] else . end) else "unknown" end),
+          fields: (keys | map(select(startswith("@") | not)))
+        }
+      ' 2>/dev/null || echo '{"type":"unknown","fields":[]}')
+      BLOCKS_JSON=$(printf '%s' "$BLOCKS_JSON" | jq --argjson b "$BLOCK_INFO" '. + [$b]')
     else
       INVALID_COUNT=$((INVALID_COUNT + 1))
     fi
@@ -109,6 +119,7 @@ jq -n \
   --argjson valid "$VALID_COUNT" \
   --argjson invalid "$INVALID_COUNT" \
   --argjson types "$TYPES_JSON" \
+  --argjson blocks "$BLOCKS_JSON" \
   --argjson hasOrg "$HAS_ORG" \
   --argjson hasBreadcrumb "$HAS_BREADCRUMB" \
   --argjson hasWebsite "$HAS_WEBSITE" \
@@ -121,6 +132,7 @@ jq -n \
     validCount: $valid,
     invalidCount: $invalid,
     types: $types,
+    blocks: $blocks,
     flags: {
       hasOrganization: $hasOrg,
       hasBreadcrumbList: $hasBreadcrumb,

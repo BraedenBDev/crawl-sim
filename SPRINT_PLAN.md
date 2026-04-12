@@ -1,97 +1,65 @@
-# Sprint Plan — C1 + C2 Accuracy Foundation
+# Sprint Plan — v1.2.0 Triple Sprint (A + B + C)
 
-**Branch:** `feat/page-type-aware-scoring`
-**Restore tag:** `restore/pre-sprint-1775951553`
-**Source:** `docs/issues/2026-04-12-accuracy-from-live-audit.md` (sections C1, C2)
-**Sprint goal (one sentence):** Make crawl-sim's structuredData scoring page-type-aware and self-explaining so the narrative layer never has to guess what was penalized.
+**Branch:** `feat/v1.2-triple-sprint`
+**Restore tag:** `restore/pre-sprint-*` on main at `b7bf903`
+**Source:** Issues #11, #12; `docs/plans/2026-04-12-triple-sprint.md`
+**Sprint goal:** Fix the parallel-fetch correctness bug, ship accuracy sprint 2 (C3+C4+H2+H3), and package crawl-sim as a Claude Code plugin.
 
-## Why these two only
+## Acceptance Criteria
 
-From the handoff doc's meta-reflection: *"C1 and C2 together solve most of the problem. Everything else is polish. If the fix agent can only do one sprint, do C1 + C2. Those two changes would have prevented every wrong recommendation I made during this session."* The other 13 items (H1–H3, M1–M5, R1–R4) are explicitly out of scope for this sprint and are parked.
+### Sprint A — fetch-as-bot.sh parallel fix (#11)
 
-## Acceptance criteria
+- [x] AC-A1: `fetch-as-bot.sh` emits `[botId] fetching <url>` and `[botId] ok: status=... size=... words=... time=...` to stderr on success
+- [x] AC-A2: When curl fails (e.g., `example.invalid`), the script outputs JSON with `fetchFailed: true` and a non-empty `error` field, exits 0
+- [x] AC-A3: `compute-score.sh` treats `fetchFailed: true` as grade F with `score: 0` on all categories
+- [x] AC-A4: Parallel invocation of 4 fetches against a valid URL never produces a 0-byte file (manual smoke test)
 
-Each becomes a test in `test/scoring.test.sh`. Tests are bash assertions over the JSON emitted by `scripts/compute-score.sh` against synthetic fixtures in `test/fixtures/`.
+### Sprint B — accuracy sprint 2 (#12)
 
-1. **AC1 — page type detection from URL.** `compute-score.sh` derives a page type from the URL in the first `fetch-*.json` file:
-   - `https://example.com/` or exactly the origin → `root`
-   - URL containing `/work/<slug>`, `/articles/<slug>`, `/journal/<slug>`, `/blog/<slug>`, `/case/<slug>` → `detail`
-   - Terminal `/work`, `/journal`, `/blog`, `/articles`, `/careers` (no slug after) → `archive`
-   - URL containing `faq` → `faq`
-   - URL containing `about`, `team`, `purpose` → `about`
-   - URL containing `contact` → `contact`
-   - Anything else → `generic`
+- [x] AC-B1: `extract-jsonld.sh` emits `blocks[]` with per-block `type` and `fields` arrays
+- [x] AC-B2: `compute-score.sh` validates required fields per schema type (C3) — `missing_required_field` violations reduce score
+- [x] AC-B3: `compute-score.sh` emits a `parity` object with `score`, `grade`, `minWords`, `maxWords`, `maxDeltaPct`, `interpretation` (C4)
+- [x] AC-B4: Parity score = 100 when single bot; parity < 50 when 10x word count divergence
+- [x] AC-B5: `compute-score.sh` emits `warnings[]` array; absent diff-render produces a `diff_render_unavailable` warning (H2)
+- [x] AC-B6: `fetch-as-bot.sh` emits `redirectCount`, `finalUrl`, and `redirectChain[]` in its JSON output (H3)
 
-2. **AC2 — `--page-type <type>` override.** When the flag is passed, it overrides URL-based detection. Used by callers who know the page type already.
+### Sprint C — plugin packaging
 
-3. **AC3 — per-page-type rubrics applied.** Structured-data scoring uses per-type `expected` / `optional` / `forbidden` schema sets:
+- [x] AC-C1: `.claude-plugin/plugin.json` exists with correct name, version, metadata
+- [x] AC-C2: `.claude-plugin/marketplace.json` exists with valid marketplace schema
+- [x] AC-C3: `skills/crawl-sim/SKILL.md` exists and is the canonical skill file
+- [x] AC-C4: `skills/crawl-sim/scripts/` and `skills/crawl-sim/profiles/` contain all scripts/profiles
+- [x] AC-C5: Root-level symlinks (SKILL.md, scripts, profiles) point to `skills/crawl-sim/` — npm compat preserved
+- [x] AC-C6: `npm test` still passes through symlinks
+- [x] AC-C7: `bin/install.js` finds sources under new paths
+- [x] AC-C8: README documents `/plugin install BraedenBDev/crawl-sim@github`
 
-   | type    | expected                                  | optional                              | forbidden                                  |
-   |---------|-------------------------------------------|---------------------------------------|--------------------------------------------|
-   | root    | Organization, WebSite                     | ProfessionalService, LocalBusiness    | BreadcrumbList, Article, FAQPage           |
-   | detail  | Article, BreadcrumbList                   | NewsArticle, ImageObject              | CollectionPage, ItemList                   |
-   | archive | CollectionPage, ItemList, BreadcrumbList  | (none)                                | Article, Product                           |
-   | faq     | FAQPage, BreadcrumbList                   | WebPage                               | Article, CollectionPage                    |
-   | about   | AboutPage, BreadcrumbList, Organization   | Person                                | Article, Product                           |
-   | contact | ContactPage, BreadcrumbList               | PostalAddress                         | Article, Product                           |
-   | generic | WebPage, BreadcrumbList                   | (none)                                | (none)                                     |
+## Files expected to change
 
-4. **AC4 — root page with Organization+WebSite scores 100.** A root page with exactly the schema.org-recommended root set must score 100 on `structuredData`. This is the regression that the live audit produced 70/C-.
+| File | Sprint | Change |
+|------|--------|--------|
+| `scripts/fetch-as-bot.sh` | A, B | Curl error handling, progress lines, redirect chain |
+| `scripts/compute-score.sh` | A, B | fetchFailed handling, field validation, parity, warnings |
+| `scripts/extract-jsonld.sh` | B | Add blocks[].fields to output |
+| `scripts/schema-fields.sh` | B | New — required fields per schema type |
+| `test/run-scoring-tests.sh` | A, B | New assertions for all ACs |
+| `test/fixtures/fetch-failed/` | A | New fixture |
+| `test/fixtures/root-invalid-fields/` | B | New fixture |
+| `test/fixtures/parity-mismatch/` | B | New fixture |
+| `.claude-plugin/plugin.json` | C | New |
+| `.claude-plugin/marketplace.json` | C | New |
+| `skills/crawl-sim/` | C | Moved SKILL.md + scripts + profiles |
+| `bin/install.js` | C | Path updates |
+| `package.json` | C | files array, version bump |
+| `README.md` | C | Plugin install docs |
 
-5. **AC5 — same JSON-LD scored as `detail` scores <70.** Same Organization+WebSite content, when the page type is forced to `detail`, must score below 70 because `Article` and `BreadcrumbList` are missing.
+## Dependency order
 
-6. **AC6 — forbidden schemas penalize.** A root page that ships `Article` + `FAQPage` schemas (forbidden for root) must score below the perfect-root score and the violation must appear in the explained output.
-
-7. **AC7 — score output is self-explaining.** Every per-bot `categories.structuredData` block in `score.json` must include:
-   - `score`, `grade` (existing)
-   - `pageType` (string)
-   - `expected` (array), `optional` (array), `forbidden` (array)
-   - `present` (array), `missing` (array), `extras` (array), `violations` (array)
-   - `calculation` (string explaining how the score was derived)
-   - `notes` (string with a human-readable summary)
-
-8. **AC8 — top-level `pageType` field.** `score.json` exposes the detected page type at the top level so the narrative layer can read it without descending into a per-bot block.
-
-9. **AC9 — non-structured categories untouched.** Accessibility, contentVisibility, technicalSignals, aiReadiness scores must be byte-identical to the baseline scoring for an unchanged input. Verified by golden file comparison on a representative fixture.
-
-10. **AC10 — schema discovery uses raw `types[]`, not flag list.** The current `extract-jsonld.sh` only flags 7 types. The new scorer reads the full `types[]` array so the `present` set isn't artificially capped at the 7 hardcoded flags. (Without this, AC4 would never see `WebSite` if extract-jsonld stopped flagging it.) Implementation note: `types[]` is already populated correctly — the change is purely in `compute-score.sh`'s consumer logic.
-
-## Files expected to touch
-
-- `scripts/compute-score.sh` — major rewrite of the structuredData category; add page-type detection; emit explained block
-- `scripts/_lib.sh` — add `page_type_for_url()` helper if it stays small enough; otherwise inline
-- `test/` (new directory) — fixture files + test runner
-- `test/run-scoring-tests.sh` (new) — bash test runner with assertion helpers
-- `test/fixtures/` (new) — synthetic results dirs that mirror the real `RUN_DIR` shape (one fetch-*.json + meta-*.json + jsonld-*.json + links-*.json + robots-*.json + llmstxt.json + sitemap.json per case)
-- `package.json` — wire `npm test` to the runner
-- `SKILL.md` — document the `--page-type` flag and the new score.json shape
-- `README.md` — update sample output snippet if it shows structuredData
-
-## Risks
-
-- **Bash 3.2 compatibility (macOS default).** No associative arrays. Rubric tables must be encoded as space-delimited strings or function-dispatched. I'll use functions per page type to avoid `declare -A`.
-- **jq complexity creep.** The explained-output JSON construction will be a single big `jq -n` call. Risk of typos breaking everything — mitigated by tests.
-- **Synthetic fixtures must match real script output exactly.** If I get the input shape wrong, tests pass against fiction. Mitigation: capture one real fixture from a known-clean fetch and use it as the structural template.
-- **`extract-jsonld.sh` flag list is finite.** AC10 requires consuming `types[]` directly. The flag fields stay (other code may use them) but they're not the source of truth for scoring.
-
-## Out of scope (parking lot)
-
-- C3 (correctness over presence — semantic field validation per schema type)
-- C4 (cross-bot parity signal as a distinct category)
-- H1, H2, H3 (script error surfacing)
-- M1–M5 (output schema docs, sample URLs, link flattening, consolidated report)
-- R1–R4 (multi-URL mode, confidence levels, adaptive display, critical-fail criteria)
-- Updating `compute-score.sh` to read `types[]` from a different source — the existing `types[]` is correct
-- Refactoring `compute-score.sh` outside of the structuredData category
-- Adding any feature flag — change the format directly, no backwards-compat shim
+Sprint A first (correctness blocker), then B (builds on reliable fetches), then C (structural).
 
 ## Parking Lot
 
-(empty — populate during the sprint if blocked)
+- CI: GitHub Actions Node 20 deprecation on checkout@v4 and setup-node@v4 needs bump before 2026-06-02
+- C3 schema-fields.sh: only validates top-level required fields, not nested (e.g., Article.author should be Person with name). Deeper validation is a separate item.
+- Parity scoring: currently uses raw server word counts from fetch files. When diff-render is available, should use effective word counts for more accurate CSR detection.
 
-## Content parity (Phase 4)
-
-Not applicable in the traditional sense — no CMS / Supabase / DB. The "content layer" for this CLI is `SKILL.md`, `README.md`, and the bot profile JSONs. Phase 4 will:
-1. Update `SKILL.md` to document the `--page-type` flag and the explained score output shape (so the narrative layer instructions stay aligned with the data layer).
-2. Update `README.md` if it shows a sample `structuredData` block.
-3. Verify all bot profile JSONs still parse and the scorer accepts them unchanged.

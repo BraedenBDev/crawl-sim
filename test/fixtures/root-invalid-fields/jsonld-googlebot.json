@@ -4,8 +4,8 @@
   "invalidCount": 0,
   "types": ["Organization", "WebSite"],
   "blocks": [
-    { "type": "Organization", "fields": ["name", "url"] },
-    { "type": "WebSite", "fields": ["name", "url"] }
+    { "type": "Organization", "fields": [] },
+    { "type": "WebSite", "fields": [] }
   ],
   "flags": {
     "hasOrganization": true,

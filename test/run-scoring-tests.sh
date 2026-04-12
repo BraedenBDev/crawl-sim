@@ -196,6 +196,105 @@ else
   fail "compute-score.sh exited non-zero with --page-type detail"
 fi
 
+# ----- Sprint A: fetchFailed handling (Issue #11) -----
+
+case_begin "AC-A3: compute-score.sh handles fetchFailed: true — grades F with score 0"
+if OUT=$(run_score fetch-failed 2>/dev/null); then
+  FETCH_FAILED=$(printf '%s' "$OUT" | jq -r '.bots.googlebot.fetchFailed // false')
+  BOT_SCORE=$(printf '%s' "$OUT" | jq -r '.bots.googlebot.score')
+  BOT_GRADE=$(printf '%s' "$OUT" | jq -r '.bots.googlebot.grade')
+  ACC_SCORE=$(printf '%s' "$OUT" | jq -r '.bots.googlebot.categories.accessibility.score')
+  CONTENT_SCORE=$(printf '%s' "$OUT" | jq -r '.bots.googlebot.categories.contentVisibility.score')
+  STRUCTURED_SCORE=$(printf '%s' "$OUT" | jq -r '.bots.googlebot.categories.structuredData.score')
+  assert_eq "$FETCH_FAILED" "true" "bot-level fetchFailed flag propagated"
+  assert_eq "$BOT_SCORE" "0" "fetchFailed bot composite score = 0"
+  assert_eq "$BOT_GRADE" "F" "fetchFailed bot grade = F"
+  assert_eq "$ACC_SCORE" "0" "fetchFailed accessibility = 0"
+  assert_eq "$CONTENT_SCORE" "0" "fetchFailed contentVisibility = 0"
+  assert_eq "$STRUCTURED_SCORE" "0" "fetchFailed structuredData = 0"
+else
+  fail "compute-score.sh exited non-zero on fetch-failed fixture"
+fi
+
+# ----- Sprint B: H3 redirect chain (AC-B6) -----
+
+case_begin "AC-B6: fetch-as-bot.sh output includes redirect fields"
+# Test against an actual fetch to verify the shape includes new fields.
+# We invoke fetch-as-bot.sh against httpbin which reliably returns 200.
+REDIRECT_TEST_OUT=$("$REPO_ROOT/scripts/fetch-as-bot.sh" "https://httpbin.org/get" "$REPO_ROOT/profiles/googlebot.json" 2>/dev/null || echo '{}')
+REDIRECT_COUNT=$(printf '%s' "$REDIRECT_TEST_OUT" | jq -r '.redirectCount // "missing"')
+FINAL_URL=$(printf '%s' "$REDIRECT_TEST_OUT" | jq -r '.finalUrl // "missing"')
+REDIRECT_CHAIN=$(printf '%s' "$REDIRECT_TEST_OUT" | jq -r '.redirectChain // "missing"')
+assert_eq "$REDIRECT_COUNT" "0" "redirectCount present for direct fetch"
+if [ "$FINAL_URL" != "missing" ]; then
+  pass "finalUrl field present"
+else
+  fail "finalUrl field missing from fetch output"
+fi
+if [ "$REDIRECT_CHAIN" != "missing" ]; then
+  pass "redirectChain field present"
+else
+  fail "redirectChain field missing from fetch output"
+fi
+
+# ----- Sprint B: C3 field validation (AC-B1, AC-B2) -----
+
+case_begin "AC-B2: schemas present but missing required fields get validity penalty"
+if OUT=$(run_score root-invalid-fields 2>/dev/null); then
+  SCORE=$(printf '%s' "$OUT" | jq -r '.bots.googlebot.categories.structuredData.score')
+  VIOLATIONS=$(printf '%s' "$OUT" | jq '[.bots.googlebot.categories.structuredData.violations[] | select(.kind=="missing_required_field")] | length')
+  assert_lt "$SCORE" "100" "missing required fields reduce score below 100"
+  assert_ge "$VIOLATIONS" "1" "at least one missing_required_field violation"
+else
+  fail "compute-score.sh exited non-zero on root-invalid-fields"
+fi
+
+case_begin "AC-B1+B2: root-minimal with valid schemas has no field violations"
+if OUT=$(run_score root-minimal 2>/dev/null); then
+  FIELD_VIOLATIONS=$(printf '%s' "$OUT" | jq '[.bots.googlebot.categories.structuredData.violations[] | select(.kind=="missing_required_field")] | length')
+  assert_eq "$FIELD_VIOLATIONS" "0" "no missing_required_field violations for valid schemas"
+else
+  fail "compute-score.sh exited non-zero on root-minimal"
+fi
+
+# ----- Sprint B: C4 cross-bot parity (AC-B3, AC-B4) -----
+
+case_begin "AC-B4: cross-bot parity — high divergence (10x word count) scores low"
+if OUT=$(run_score parity-mismatch 2>/dev/null); then
+  PARITY_SCORE=$(printf '%s' "$OUT" | jq -r '.parity.score')
+  PARITY_GRADE=$(printf '%s' "$OUT" | jq -r '.parity.grade')
+  PARITY_MAX_DELTA=$(printf '%s' "$OUT" | jq -r '.parity.maxDeltaPct')
+  PARITY_INTERP=$(printf '%s' "$OUT" | jq -r '.parity.interpretation')
+  assert_lt "$PARITY_SCORE" "50" "parity score below 50 when 10x word count gap"
+  assert_eq "$PARITY_GRADE" "F" "parity grade F for severe divergence"
+  assert_ge "$PARITY_MAX_DELTA" "80" "maxDeltaPct reflects 90% content difference"
+  assert_contains "$PARITY_INTERP" "client-side rendering" "interpretation mentions CSR"
+else
+  fail "compute-score.sh exited non-zero on parity-mismatch"
+fi
+
+case_begin "AC-B3: cross-bot parity — single bot has perfect parity"
+if OUT=$(run_score root-minimal 2>/dev/null); then
+  PARITY_SCORE=$(printf '%s' "$OUT" | jq -r '.parity.score')
+  PARITY_GRADE=$(printf '%s' "$OUT" | jq -r '.parity.grade')
+  assert_eq "$PARITY_SCORE" "100" "single-bot fixture has perfect parity"
+  assert_eq "$PARITY_GRADE" "A" "parity grade A for perfect parity"
+else
+  fail "compute-score.sh exited non-zero on root-minimal for parity"
+fi
+
+# ----- Sprint B: H2 diff-render warning (AC-B5) -----
+
+case_begin "AC-B5: missing diff-render.json emits a warning"
+if OUT=$(run_score root-minimal 2>/dev/null); then
+  WARNINGS_EXIST=$(printf '%s' "$OUT" | jq 'has("warnings")')
+  WARN_COUNT=$(printf '%s' "$OUT" | jq '[.warnings[]? | select(.code=="diff_render_unavailable")] | length')
+  assert_eq "$WARNINGS_EXIST" "true" "warnings array exists in output"
+  assert_eq "$WARN_COUNT" "1" "diff_render_unavailable warning emitted when diff-render.json absent"
+else
+  fail "compute-score.sh exited non-zero on root-minimal"
+fi
+
 # ----- Summary -----
 
 printf '\n================================================\n'
