@@ -31,6 +31,9 @@ Keep status lines short, active, and specific to this URL. Never use the same se
 /crawl-sim <url> --bot gptbot               # single bot
 /crawl-sim <url> --category structured-data # category deep dive
 /crawl-sim <url> --json                     # JSON output only (for CI)
+/crawl-sim <url> --pdf                      # audit + PDF report to Desktop
+/crawl-sim <url> --compare <url2>           # side-by-side comparison of two sites
+/crawl-sim <url> --compare <url2> --pdf     # comparison + PDF report
 ```
 
 ## Prerequisites — check once at the start
@@ -238,6 +241,37 @@ After findings, write a **Summary** paragraph: what's working well, biggest wins
 - If the target URL returns non-200, report immediately and still run robots.txt / sitemap / llms.txt checks (they don't require the page to load).
 - If `jq` or `curl` is missing, exit with install instructions.
 - If `diff-render.sh` skips, the narrative must note that per-bot differentiation is reduced.
+
+## PDF Report (`--pdf`)
+
+When the user passes `--pdf`, after the narrative output, generate a PDF report:
+
+```bash
+"$SKILL_DIR/scripts/generate-report-html.sh" ./crawl-sim-report.json "$RUN_DIR/report.html"
+"$SKILL_DIR/scripts/html-to-pdf.sh" "$RUN_DIR/report.html" "$HOME/Desktop/crawl-sim-audit.pdf"
+```
+
+Tell the user where the PDF was saved. If `html-to-pdf.sh` fails (no Chrome or Playwright), the HTML file is still available — tell the user and suggest installing a renderer.
+
+## Comparative Audit (`--compare <url2>`)
+
+When the user passes `--compare <url2>`, run two full audits and produce a side-by-side report:
+
+1. Run the complete 5-stage pipeline for `<url>` — save report as `./crawl-sim-report-a.json`
+2. Run the complete 5-stage pipeline for `<url2>` — save report as `./crawl-sim-report-b.json`
+3. Generate the comparison:
+
+```bash
+"$SKILL_DIR/scripts/generate-compare-html.sh" ./crawl-sim-report-a.json ./crawl-sim-report-b.json "$RUN_DIR/compare.html"
+```
+
+4. If `--pdf` was also passed:
+
+```bash
+"$SKILL_DIR/scripts/html-to-pdf.sh" "$RUN_DIR/compare.html" "$HOME/Desktop/crawl-sim-compare.pdf"
+```
+
+The narrative for a comparison should lead with: which site wins overall, by how many points, and in which categories. Then highlight the biggest deltas — what Site A does better, what Site B does better, and what both share.
 
 ## Cleanup
 
