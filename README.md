@@ -9,7 +9,7 @@
 
 `crawl-sim` is the first open-source, **agent-native multi-bot web crawler simulator**. It audits a URL from the perspective of each major crawler — Google's search bot, OpenAI's GPTBot, Anthropic's ClaudeBot, Perplexity's crawler, and more — then produces a quantified score card, prioritized findings, and structured JSON output.
 
-It ships as a [Claude Code skill](https://docs.claude.com/en/docs/claude-code/skills) backed by standalone shell scripts, so the intelligence lives in the agent and the plumbing stays debuggable.
+It ships as a [Claude Code plugin](https://docs.claude.com/en/docs/claude-code/plugins) backed by standalone shell scripts, so the intelligence lives in the agent and the plumbing stays debuggable.
 
 ---
 
@@ -24,8 +24,6 @@ The crawler-simulation market has a gap. Most tools pick one lane:
 | **Frameworks** | Crawlee, Playwright | Raw building blocks with no bot intelligence |
 
 No existing tool combines **multi-bot simulation + LLM-powered interpretation + quantified scoring** in an agent-native format. `crawl-sim` does.
-
-The concept was validated manually: a curl-as-GPTBot + Claude analysis caught a real SSR bug (`ssr: false` on a dynamic import) that was silently hiding article cards from AI crawlers on a production site.
 
 ---
 
@@ -73,8 +71,6 @@ crawl-sim install              # → ~/.claude/skills/crawl-sim/
 crawl-sim install --project    # → .claude/skills/crawl-sim/
 ```
 
-> **Why `npm install -g` instead of `npx`?** Recent versions of npx have a known issue linking bins for scoped single-bin packages in ephemeral installs. A persistent global install avoids the problem entirely. The git clone path below is the zero-npm fallback.
-
 ### As a standalone CLI
 
 ```bash
@@ -83,17 +79,12 @@ cd crawl-sim
 ./scripts/fetch-as-bot.sh https://yoursite.com profiles/gptbot.json | jq .
 ```
 
-You can also clone directly into the Claude Code skills directory:
-
-```bash
-git clone https://github.com/BraedenBDev/crawl-sim.git ~/.claude/skills/crawl-sim
-```
-
 ### Prerequisites
 
 - **`curl`** — pre-installed on macOS/Linux
 - **`jq`** — `brew install jq` (macOS) or `apt install jq` (Linux)
 - **`playwright`** (optional) — for Googlebot JS-render comparison: `npx playwright install chromium`
+- **Chrome or Playwright** (optional) — for PDF report generation
 
 ---
 
@@ -101,13 +92,19 @@ git clone https://github.com/BraedenBDev/crawl-sim.git ~/.claude/skills/crawl-si
 
 - **Multi-bot simulation.** Nine verified bot profiles covering Google, OpenAI, Anthropic, and Perplexity — including the bot-vs-user-agent distinction (e.g., `ChatGPT-User` officially ignores robots.txt; `claude-user` respects it).
 - **Quantified scoring.** Each bot is graded 0–100 across five categories with letter grades A through F, plus a weighted composite score.
-- **Page-type-aware rubric.** The structured-data category derives the page type from the URL (`root` / `detail` / `archive` / `faq` / `about` / `contact` / `generic`) and applies a per-type schema rubric. A homepage shipping `Organization` + `WebSite` scores 100 without being penalized for not having `BreadcrumbList` or `FAQPage`. Override the detection with `--page-type <type>` when the URL heuristic picks wrong.
-- **Self-explaining scores.** Every `structuredData` block in the JSON report ships `pageType`, `expected`, `optional`, `forbidden`, `present`, `missing`, `extras`, `violations`, `calculation`, and `notes` — so the narrative layer reads the scorer's reasoning directly instead of guessing what was penalized.
+- **Page-type-aware rubric.** The structured-data category derives the page type from the URL (`root` / `detail` / `archive` / `faq` / `about` / `contact` / `generic`) and applies a per-type schema rubric. A homepage shipping `Organization` + `WebSite` scores 100 without being penalized for missing `BreadcrumbList` or `FAQPage`. Override the detection with `--page-type <type>` when the URL heuristic picks wrong.
+- **Self-explaining scores.** Every `structuredData` block ships `pageType`, `expected`, `present`, `missing`, `violations` (with `confidence` levels), `calculation`, and `notes` — so the narrative reads the scorer's reasoning directly instead of guessing.
+- **Schema field validation.** Checks that present schemas include required fields per schema.org type (e.g., Organization must have `name` + `url`). Missing required fields produce `missing_required_field` violations.
+- **Cross-bot parity scoring.** Measures word-count divergence across bots. Perfect parity = 100/A. Severe CSR mismatch (Googlebot sees 10x more than GPTBot) = F with interpretation.
+- **robots.txt enforceability.** Each bot profile carries `robotsTxtEnforceability` (`enforced`, `advisory_only`, `stealth_risk`) based on documented compliance. When robots.txt blocks a bot that ignores it, the narrative flags the block as unenforceable.
+- **Cloudflare-aware.** Bot profiles include `cloudflareCategory` (`ai_crawler`, `ai_search`, `ai_assistant`) matching Cloudflare's three-tier classification. Since July 2025, Cloudflare blocks AI training crawlers by default on ~20% of the web.
+- **PDF reports.** Generate styled HTML audit reports and convert to PDF via Chrome or Playwright. Pass `--pdf` for a one-command PDF to Desktop.
+- **Comparative audits.** `--compare <url2>` runs two full audits and produces a side-by-side VS report with category deltas, per-bot comparison, and winner determination. Combine with `--pdf` for a comparison PDF.
+- **Consolidated report.** `build-report.sh` merges score data with raw per-bot extraction data into a single `crawl-sim-report.json`. The narrative reads one file instead of 8+.
 - **Agent-native interpretation.** The Claude Code skill reads raw data, identifies root causes (framework signals, hydration boundaries, soft-404s), and recommends specific fixes.
 - **Three-layer output.** Terminal score card, prose narrative, and structured JSON — so humans and CI both get what they need.
-- **Confidence transparency.** Every claim is tagged `official`, `observed`, or `inferred`. The skill notes when recommendations depend on observed-but-undocumented behavior.
 - **Shell-native core.** All checks use only `curl` + `jq`. No Node, no Python, no Docker. Each script is independently invokable.
-- **Regression-tested.** `npm test` runs a 37-assertion scoring suite against synthetic fixtures, covering URL→page-type detection, per-type rubrics, missing/forbidden schema flagging, and golden non-structured output.
+- **Regression-tested.** `npm test` runs a 70-assertion scoring suite against synthetic fixtures, covering URL→page-type detection, per-type rubrics, field validation, parity scoring, critical-fail criteria, and golden non-structured output.
 - **Extensible.** Drop a new profile JSON into `profiles/` and it's auto-discovered.
 
 ---
@@ -117,19 +114,22 @@ git clone https://github.com/BraedenBDev/crawl-sim.git ~/.claude/skills/crawl-si
 ### Claude Code skill
 
 ```
-/crawl-sim https://yoursite.com                            # full audit
-/crawl-sim https://yoursite.com --bot gptbot               # single bot
-/crawl-sim https://yoursite.com --category structured-data # category deep-dive
-/crawl-sim https://yoursite.com --json                     # JSON only (for CI)
+/crawl-sim https://yoursite.com                                    # full audit
+/crawl-sim https://yoursite.com --bot gptbot                       # single bot
+/crawl-sim https://yoursite.com --category structured-data         # category deep-dive
+/crawl-sim https://yoursite.com --json                             # JSON only (for CI)
+/crawl-sim https://yoursite.com --pdf                              # audit + PDF report
+/crawl-sim https://yoursite.com --compare https://competitor.com   # side-by-side comparison
+/crawl-sim https://yoursite.com --compare https://competitor.com --pdf  # comparison PDF
 ```
 
-The skill auto-detects page type from the URL. Pass `--page-type root|detail|archive|faq|about|contact|generic` to the underlying `compute-score.sh` when the URL heuristic picks the wrong type (e.g., a homepage at `/en/` that URL-parses as `generic`).
+The skill auto-detects page type from the URL. Pass `--page-type root|detail|archive|faq|about|contact|generic` when the URL heuristic picks the wrong type (e.g., a homepage at `/en/` that parses as `generic`).
 
 Output is a three-layer report:
 
-1. **Score card** — ASCII overview with per-bot and per-category scores.
-2. **Narrative audit** — prose findings ranked by point impact, with fix recommendations.
-3. **JSON report** — saved to `crawl-sim-report.json` for diffing and automation.
+1. **Score card** — ASCII overview with per-bot and per-category scores. When content parity is high (all bots see the same content), bot rows collapse to a single line.
+2. **Narrative audit** — prose findings ranked by point impact, with fix recommendations. Includes robots.txt enforceability context for each bot.
+3. **JSON report** — saved to `crawl-sim-report.json` with score data + raw per-bot extraction data for diffing and automation.
 
 ### Direct script invocation
 
@@ -144,7 +144,9 @@ Every script is standalone and outputs JSON to stdout:
 ./scripts/check-llmstxt.sh   https://yoursite.com
 ./scripts/check-sitemap.sh   https://yoursite.com
 ./scripts/compute-score.sh   /tmp/audit-data/
-./scripts/compute-score.sh   --page-type root /tmp/audit-data/   # override URL heuristic
+./scripts/build-report.sh    /tmp/audit-data/               # consolidated report
+./scripts/generate-report-html.sh crawl-sim-report.json      # HTML report
+./scripts/html-to-pdf.sh     report.html output.pdf          # PDF conversion
 ```
 
 ### CI/CD
@@ -165,16 +167,18 @@ Each bot is scored 0–100 across five weighted categories:
 
 | Category | Weight | Measures |
 |----------|:------:|----------|
-| **Accessibility** | 25 | robots.txt allows, HTTP 200, response time |
+| **Accessibility** | 25 | robots.txt allows, HTTP 200, response time. Robots blocking = auto-F (critical-fail). |
 | **Content Visibility** | 30 | server HTML word count, heading structure, internal links, image alt text |
-| **Structured Data** | 20 | JSON-LD presence, validity, page-type-aware `@type` rubric (root / detail / archive / faq / about / contact / generic) |
+| **Structured Data** | 20 | JSON-LD presence, validity, per-type `@type` rubric, required field validation |
 | **Technical Signals** | 15 | title / description / canonical / OG meta, sitemap inclusion |
-| **AI Readiness** | 10 | `llms.txt` structure, content citability |
+| **AI Readiness** | 10 | `llms.txt` and/or `llms-full.txt` structure, content citability |
 
 **Overall composite** weighs bots by reach:
 
 - Googlebot **40%** — still the primary search driver
 - GPTBot, ClaudeBot, PerplexityBot — **20% each** — the AI visibility tier
+
+**Cross-bot parity** is scored separately (not part of the composite). It measures whether all bots see the same content. A severe CSR mismatch (Googlebot renders JS and sees 10x more content than AI bots) surfaces as the headline finding.
 
 **Grade thresholds**
 
@@ -187,27 +191,30 @@ Each bot is scored 0–100 across five weighted categories:
 | 60–69 | D+ / D / D- | Major issues — limited discoverability |
 | 0–59 | F | Invisible or broken for this bot |
 
-**The key differentiator:** bots with `rendersJavaScript: false` (GPTBot, ClaudeBot, PerplexityBot) are scored against **server HTML only**. Googlebot can be scored against the rendered DOM via the optional `diff-render.sh`. This surfaces CSR hydration issues that hide content from AI crawlers — exactly the kind of bug SEO tools don't catch because they're built around Googlebot's headless-Chrome behavior.
-
 ---
 
 ## Supported bots
 
-| Profile | Vendor | Purpose | JS Render | Respects robots.txt |
-|---------|--------|---------|:---------:|:-------------------:|
-| `googlebot` | Google | Search indexing | **yes** (official) | yes |
-| `gptbot` | OpenAI | Model training | no (observed) | yes |
-| `oai-searchbot` | OpenAI | ChatGPT search | unknown (inferred) | yes |
-| `chatgpt-user` | OpenAI | User fetches | unknown | partial (*) |
-| `claudebot` | Anthropic | Model training | no (observed) | yes |
-| `claude-user` | Anthropic | User fetches | unknown | yes |
-| `claude-searchbot` | Anthropic | Search quality | unknown | yes |
-| `perplexitybot` | Perplexity | Search indexing | no (observed) | yes |
-| `perplexity-user` | Perplexity | User fetches | unknown | no (*) |
+| Profile | Vendor | Purpose | JS Render | robots.txt | Enforceability | Cloudflare tier |
+|---------|--------|---------|:---------:|:----------:|:--------------:|:---------------:|
+| `googlebot` | Google | Search | **yes** | yes | enforced | search_engine |
+| `gptbot` | OpenAI | Training | no | yes | enforced | ai_crawler |
+| `oai-searchbot` | OpenAI | Search | unknown | yes | enforced | ai_search |
+| `chatgpt-user` | OpenAI | User fetch | unknown | partial | **advisory_only** | ai_assistant |
+| `claudebot` | Anthropic | Training | no | yes | enforced | ai_crawler |
+| `claude-user` | Anthropic | User fetch | unknown | yes | enforced | ai_assistant |
+| `claude-searchbot` | Anthropic | Search | unknown | yes | enforced | ai_search |
+| `perplexitybot` | Perplexity | Search | no | yes | **stealth_risk** | ai_search |
+| `perplexity-user` | Perplexity | User fetch | unknown | no | **advisory_only** | ai_assistant |
 
-\* Officially documented as ignoring robots.txt for user-initiated fetches.
+**Enforceability key:**
+- **enforced** — the bot respects robots.txt directives
+- **advisory_only** — the bot's vendor has stated user-initiated fetches may ignore robots.txt. Blocking via robots.txt alone has no effect; network-level enforcement (e.g., Cloudflare WAF) is needed.
+- **stealth_risk** — the bot claims compliance, but Cloudflare has documented instances of undeclared crawlers with generic user-agent strings bypassing blocks.
 
-Every profile is backed by official vendor documentation where possible. See [`research/bot-profiles-verified.md`](./research/bot-profiles-verified.md) for sources and confidence levels. When a claim is `observed` or `inferred` rather than `official`, the skill output notes this transparently.
+**Cloudflare context:** Since July 2025, Cloudflare blocks all `ai_crawler` tier bots by default on new domains (~20% of the web). `ai_search` and `ai_assistant` bots are in Cloudflare's verified bots directory and are not blocked by the default toggle.
+
+Every profile is backed by official vendor documentation where possible. See [`research/bot-profiles-verified.md`](./research/bot-profiles-verified.md) for sources and confidence levels.
 
 ### Adding a custom bot
 
@@ -221,9 +228,11 @@ Drop a JSON file in `profiles/`. The skill auto-discovers all `*.json` files.
   "userAgent": "Mozilla/5.0 ... MyBot/1.0",
   "robotsTxtToken": "MyBot",
   "purpose": "search",
+  "cloudflareCategory": "ai_search",
+  "robotsTxtEnforceability": "enforced",
   "rendersJavaScript": false,
   "respectsRobotsTxt": true,
-  "lastVerified": "2026-04-11"
+  "lastVerified": "2026-04-12"
 }
 ```
 
@@ -233,25 +242,38 @@ Drop a JSON file in `profiles/`. The skill auto-discovers all `*.json` files.
 
 ```
 crawl-sim/
-├── SKILL.md               # Claude Code orchestrator skill
-├── bin/install.js         # npm installer
-├── profiles/              # 9 verified bot profiles (JSON)
-├── scripts/
-│   ├── _lib.sh            # shared helpers (URL parsing, page-type detection)
-│   ├── fetch-as-bot.sh    # curl with bot UA → JSON (status/headers/body/timing)
-│   ├── extract-meta.sh    # title, description, OG, headings, images
-│   ├── extract-jsonld.sh  # JSON-LD @type detection
-│   ├── extract-links.sh   # internal/external link classification
-│   ├── check-robots.sh    # robots.txt parsing per UA token
-│   ├── check-llmstxt.sh   # llms.txt presence and structure
-│   ├── check-sitemap.sh   # sitemap.xml URL inclusion
-│   ├── diff-render.sh     # optional Playwright server-vs-rendered comparison
-│   └── compute-score.sh   # aggregates all checks → per-bot + per-category scores
+├── .claude-plugin/           # Plugin manifest + marketplace config
+│   ├── plugin.json
+│   └── marketplace.json
+├── skills/crawl-sim/         # Plugin-structured skill directory
+│   ├── SKILL.md              # Claude Code orchestrator skill
+│   ├── profiles/             # 9 verified bot profiles (JSON)
+│   ├── scripts/
+│   │   ├── _lib.sh               # shared helpers (URL parsing, page-type detection)
+│   │   ├── fetch-as-bot.sh       # curl with bot UA → JSON (status/headers/body/timing/redirects)
+│   │   ├── extract-meta.sh       # title, description, OG, headings, images
+│   │   ├── extract-jsonld.sh     # JSON-LD types + per-block field names
+│   │   ├── extract-links.sh      # internal/external link classification (flat schema)
+│   │   ├── check-robots.sh       # robots.txt parsing per UA token
+│   │   ├── check-llmstxt.sh      # llms.txt + llms-full.txt presence and structure
+│   │   ├── check-sitemap.sh      # sitemap.xml URL inclusion + sample URLs
+│   │   ├── diff-render.sh        # optional Playwright server-vs-rendered comparison
+│   │   ├── compute-score.sh      # aggregates all checks → per-bot + per-category scores
+│   │   ├── schema-fields.sh      # required field definitions per schema.org type
+│   │   ├── build-report.sh       # consolidate score + raw data into single report
+│   │   ├── generate-report-html.sh   # styled HTML audit report
+│   │   ├── generate-compare-html.sh  # side-by-side comparison report
+│   │   └── html-to-pdf.sh        # Chrome → Playwright PDF renderer
+│   └── templates/             # HTML templates for report generation
+├── bin/install.js             # npm installer (copies to ~/.claude/skills/)
 ├── test/
-│   ├── run-scoring-tests.sh  # 37-assertion bash harness (run with `npm test`)
-│   └── fixtures/             # synthetic RUN_DIR fixtures for regression tests
-├── research/              # Verified bot data sources
-└── docs/                  # Design docs, issues, accuracy handoffs
+│   ├── run-scoring-tests.sh   # 70-assertion bash harness (run with `npm test`)
+│   └── fixtures/              # synthetic RUN_DIR fixtures for regression tests
+├── research/                  # Verified bot data sources
+└── docs/
+    ├── output-schemas.md      # JSON contract for every script's stdout
+    ├── issues/                # Accuracy handoff documentation
+    └── plans/                 # Sprint implementation plans
 ```
 
 The shell scripts are the plumbing. The Claude Code skill is the intelligence — it reads the raw JSON, understands framework context (Next.js, Nuxt, SPAs), identifies root causes, and writes actionable recommendations.
@@ -270,7 +292,7 @@ Contributions are welcome! See [CONTRIBUTING.md](./CONTRIBUTING.md) for details 
 
 Quick principles:
 
-- **Keep the core dependency-free** — `curl` + `jq` only. `diff-render.sh` is the single Playwright exception.
+- **Keep the core dependency-free** — `curl` + `jq` only. `diff-render.sh` and `html-to-pdf.sh` are the optional-dependency exceptions.
 - **Every script outputs valid JSON to stdout** and is testable against a live URL.
 - **Cite sources** when adding or updating bot profiles — every behavioral claim needs a vendor doc link or a reproducible observation.
 
@@ -279,7 +301,8 @@ Quick principles:
 ## Acknowledgments
 
 - **Bot documentation** from [OpenAI](https://developers.openai.com/api/docs/bots), [Anthropic](https://privacy.claude.com), [Perplexity](https://docs.perplexity.ai/docs/resources/perplexity-crawlers), and [Google Search Central](https://developers.google.com/search/docs).
-- **Prior art** in the space: [Dark Visitors](https://darkvisitors.com), [CrawlerCheck](https://crawlercheck.com), [Cloudflare Radar](https://radar.cloudflare.com).
+- **Cloudflare bot classification** from [Cloudflare Radar](https://radar.cloudflare.com/bots) and [Cloudflare Docs](https://developers.cloudflare.com/bots/concepts/bot/).
+- **Prior art** in the space: [Dark Visitors](https://darkvisitors.com), [CrawlerCheck](https://crawlercheck.com).
 - Built with [Claude Code](https://claude.com/claude-code).
 
 ---
