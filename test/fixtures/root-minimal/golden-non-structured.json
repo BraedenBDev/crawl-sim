@@ -1,0 +1,12 @@
+{
+  "accessibility": { "score": 100, "grade": "A" },
+  "contentVisibility": { "score": 100, "grade": "A" },
+  "technicalSignals": { "score": 100, "grade": "A" },
+  "aiReadiness": { "score": 100, "grade": "A" },
+  "visibility": {
+    "serverWords": 450,
+    "effectiveWords": 450,
+    "missedWordsVsRendered": 0,
+    "hydrationPenaltyPts": 0
+  }
+}

@@ -41,6 +41,36 @@ count_words() {
   sed 's/<[^>]*>//g' "$1" | tr -s '[:space:]' '\n' | grep -c '[a-zA-Z0-9]' || true
 }
 
+# Detect the structural page type of a URL based on its path.
+# Returns one of: root, detail, archive, faq, about, contact, generic.
+#
+# Used by compute-score.sh to pick a schema rubric, but also exposed here
+# so other tooling (narrative layer, planned multi-URL mode) can classify
+# URLs consistently without re-implementing the heuristic.
+page_type_for_url() {
+  local url="$1"
+  local path
+  path=$(path_from_url "$url" | sed 's#[?#].*##')
+  if [ "$path" = "/" ]; then
+    echo "root"
+    return
+  fi
+  local trimmed lower
+  trimmed=$(printf '%s' "$path" | sed 's#^/##' | sed 's#/$##')
+  lower=$(printf '%s' "$trimmed" | tr '[:upper:]' '[:lower:]')
+  case "$lower" in
+    "") echo "root" ;;
+    work|journal|blog|articles|news|careers|projects|case-studies|cases)
+      echo "archive" ;;
+    work/*|articles/*|journal/*|blog/*|news/*|case-studies/*|cases/*|case/*|careers/*|projects/*)
+      echo "detail" ;;
+    *faq*) echo "faq" ;;
+    *about*|*team*|*purpose*|*who-we-are*) echo "about" ;;
+    *contact*) echo "contact" ;;
+    *) echo "generic" ;;
+  esac
+}
+
 # Fetch a URL to a local file and return the HTTP status code on stdout.
 # Usage: status=$(fetch_to_file <url> <output-file> [timeout-seconds])
 fetch_to_file() {
