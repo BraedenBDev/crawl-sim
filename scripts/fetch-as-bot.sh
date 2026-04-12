@@ -29,7 +29,7 @@ TIMING=$(curl -sS -L \
   -H "User-Agent: $UA" \
   -D "$HEADERS_FILE" \
   -o "$BODY_FILE" \
-  -w '{"total":%{time_total},"ttfb":%{time_starttransfer},"connect":%{time_connect},"statusCode":%{http_code},"sizeDownload":%{size_download}}' \
+  -w '{"total":%{time_total},"ttfb":%{time_starttransfer},"connect":%{time_connect},"statusCode":%{http_code},"sizeDownload":%{size_download},"redirectCount":%{num_redirects},"finalUrl":"%{url_effective}"}' \
   --max-time 30 \
   "$URL" 2>"$CURL_STDERR_FILE")
 CURL_EXIT=$?
@@ -89,6 +89,27 @@ HEADERS_JSON=$(tr -d '\r' < "$HEADERS_FILE" \
       | add // {}
     ')
 
+REDIRECT_COUNT=$(echo "$TIMING" | jq -r '.redirectCount')
+FINAL_URL=$(echo "$TIMING" | jq -r '.finalUrl')
+
+# Parse redirect chain from headers dump.
+# curl -D writes multiple HTTP response blocks on redirect — each starts with HTTP/.
+REDIRECT_CHAIN="[]"
+if [ "$REDIRECT_COUNT" -gt 0 ]; then
+  REDIRECT_CHAIN=$(tr -d '\r' < "$HEADERS_FILE" | awk '
+    /^HTTP\// { status=$2; url="" }
+    /^[Ll]ocation:/ { url=$2 }
+    /^$/ && status && url { printf "%s %s\n", status, url; status=""; url="" }
+  ' | jq -Rs '
+    split("\n") | map(select(length > 0)) |
+    to_entries | map({
+      hop: .key,
+      status: (.value | split(" ")[0] | tonumber),
+      location: (.value | split(" ")[1:] | join(" "))
+    })
+  ')
+fi
+
 WORD_COUNT=$(count_words "$BODY_FILE")
 [ -z "$WORD_COUNT" ] && WORD_COUNT=0
 
@@ -111,6 +132,9 @@ jq -n \
   --argjson size "$SIZE" \
   --argjson wordCount "$WORD_COUNT" \
   --argjson headers "$HEADERS_JSON" \
+  --argjson redirectCount "$REDIRECT_COUNT" \
+  --arg finalUrl "$FINAL_URL" \
+  --argjson redirectChain "$REDIRECT_CHAIN" \
   --arg bodyBase64 "$BODY_B64" \
   '{
     url: $url,
@@ -124,6 +148,9 @@ jq -n \
     timing: { total: $totalTime, ttfb: $ttfb },
     size: $size,
     wordCount: $wordCount,
+    redirectCount: $redirectCount,
+    finalUrl: $finalUrl,
+    redirectChain: $redirectChain,
     headers: $headers,
     bodyBase64: $bodyBase64
   }'
