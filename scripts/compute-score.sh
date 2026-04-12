@@ -600,6 +600,22 @@ CAT_STRUCTURED_GRADE=$(grade_for "$CAT_STRUCTURED_AVG")
 CAT_TECHNICAL_GRADE=$(grade_for "$CAT_TECHNICAL_AVG")
 CAT_AI_GRADE=$(grade_for "$CAT_AI_AVG")
 
+# --- Warnings (H2) ---
+WARNINGS="[]"
+if [ "$DIFF_AVAILABLE" != "true" ]; then
+  DIFF_REASON="not_found"
+  if [ -f "$DIFF_RENDER_FILE" ]; then
+    DIFF_REASON=$(jq -r '.reason // "skipped"' "$DIFF_RENDER_FILE" 2>/dev/null || echo "skipped")
+  fi
+  WARNINGS=$(printf '%s' "$WARNINGS" | jq --arg reason "$DIFF_REASON" \
+    '. + [{
+      code: "diff_render_unavailable",
+      severity: "high",
+      message: "JS rendering comparison was skipped. If this site uses CSR, non-JS bot scores may be inaccurate.",
+      reason: $reason
+    }]')
+fi
+
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 jq -n \
@@ -621,6 +637,7 @@ jq -n \
   --arg catTechnicalGrade "$CAT_TECHNICAL_GRADE" \
   --argjson catAi "$CAT_AI_AVG" \
   --arg catAiGrade "$CAT_AI_GRADE" \
+  --argjson warnings "$WARNINGS" \
   '{
     url: $url,
     timestamp: $timestamp,
@@ -628,6 +645,7 @@ jq -n \
     pageType: $pageType,
     pageTypeOverridden: ($pageTypeOverride | length > 0),
     overall: { score: $overallScore, grade: $overallGrade },
+    warnings: $warnings,
     bots: $bots,
     categories: {
       accessibility:     { score: $catAcc,        grade: $catAccGrade },
