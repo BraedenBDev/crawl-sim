@@ -45,12 +45,6 @@ No existing tool combines **multi-bot simulation + LLM-powered interpretation + 
 ### As a Claude Code plugin (recommended)
 
 ```
-/plugin install BraedenBDev/crawl-sim@github
-```
-
-Or add as a marketplace for easy updates:
-
-```
 /plugin marketplace add BraedenBDev/crawl-sim
 /plugin install crawl-sim@crawl-sim
 ```
@@ -62,6 +56,8 @@ Then invoke:
 ```
 
 Claude runs the full pipeline, interprets the results, and returns a score card plus prioritized findings.
+
+> **Verified:** Plugin installs from GitHub via the marketplace route, discovers the skill at `skills/crawl-sim/SKILL.md`, and all 15 scripts + 9 profiles are executable from the plugin cache path.
 
 ### Via npm (alternative)
 
