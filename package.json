@@ -5,6 +5,9 @@
   "bin": {
     "crawl-sim": "bin/install.js"
   },
+  "scripts": {
+    "test": "./test/run-scoring-tests.sh"
+  },
   "keywords": [
     "seo",
     "crawler",
