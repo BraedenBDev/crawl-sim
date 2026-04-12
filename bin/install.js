@@ -14,6 +14,7 @@ const os = require('os');
 const { execFileSync } = require('child_process');
 
 const SOURCE_DIR = path.resolve(__dirname, '..');
+const SKILL_ROOT = path.resolve(SOURCE_DIR, 'skills', 'crawl-sim');
 const SKILL_FILES = ['SKILL.md'];
 const SKILL_DIRS = ['profiles', 'scripts'];
 
@@ -80,7 +81,9 @@ function install(target) {
   fs.mkdirSync(target, { recursive: true });
 
   for (const file of SKILL_FILES) {
-    const src = path.join(SOURCE_DIR, file);
+    // Look in skills/crawl-sim/ first (canonical), fallback to root (symlink)
+    let src = path.join(SKILL_ROOT, file);
+    if (!fs.existsSync(src)) src = path.join(SOURCE_DIR, file);
     const dest = path.join(target, file);
     if (fs.existsSync(src)) {
       fs.copyFileSync(src, dest);
@@ -92,7 +95,8 @@ function install(target) {
   }
 
   for (const dir of SKILL_DIRS) {
-    const src = path.join(SOURCE_DIR, dir);
+    let src = path.join(SKILL_ROOT, dir);
+    if (!fs.existsSync(src)) src = path.join(SOURCE_DIR, dir);
     const dest = path.join(target, dir);
     if (fs.existsSync(src)) {
       if (fs.existsSync(dest)) {

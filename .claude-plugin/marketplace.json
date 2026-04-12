@@ -1,0 +1,15 @@
+{
+  "name": "crawl-sim",
+  "owner": {
+    "name": "BraedenBDev",
+    "url": "https://github.com/BraedenBDev"
+  },
+  "plugins": [
+    {
+      "name": "crawl-sim",
+      "source": "./",
+      "description": "Multi-bot web crawler simulator — audit how Googlebot, GPTBot, ClaudeBot, and PerplexityBot see your site",
+      "version": "1.2.0"
+    }
+  ]
+}

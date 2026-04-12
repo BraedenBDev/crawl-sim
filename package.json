@@ -40,9 +40,11 @@
   },
   "files": [
     "bin/",
+    "skills/",
+    ".claude-plugin/",
     "SKILL.md",
-    "profiles/",
-    "scripts/",
+    "profiles",
+    "scripts",
     "README.md",
     "LICENSE"
   ]
