@@ -1,0 +1,13 @@
+{
+  "url": "https://example.com/",
+  "bot": { "id": "gptbot", "name": "GPTBot", "userAgent": "GPTBot/1.2", "rendersJavaScript": false },
+  "status": 200,
+  "timing": { "total": 1.0, "ttfb": 0.2 },
+  "size": 10000,
+  "wordCount": 100,
+  "redirectCount": 0,
+  "finalUrl": "https://example.com/",
+  "redirectChain": [],
+  "headers": {},
+  "bodyBase64": ""
+}
