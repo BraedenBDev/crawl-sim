@@ -31,7 +31,7 @@ TIMING=$(curl -sS -L \
   -H "User-Agent: $UA" \
   -D "$HEADERS_FILE" \
   -o "$BODY_FILE" \
-  -w '{"total":%{time_total},"ttfb":%{time_starttransfer},"connect":%{time_connect},"statusCode":%{http_code},"sizeDownload":%{size_download},"redirectCount":%{num_redirects},"finalUrl":"%{url_effective}"}' \
+  -w '%{time_total}\t%{time_starttransfer}\t%{time_connect}\t%{http_code}\t%{size_download}\t%{num_redirects}\t%{url_effective}' \
   --max-time 30 \
   "$URL" 2>"$CURL_STDERR_FILE")
 CURL_EXIT=$?
@@ -77,8 +77,8 @@ if [ "$CURL_EXIT" -ne 0 ]; then
   exit 0
 fi
 
-read -r STATUS TOTAL_TIME TTFB SIZE REDIRECT_COUNT FINAL_URL <<< \
-  "$(echo "$TIMING" | jq -r '[.statusCode, .total, .ttfb, .sizeDownload, .redirectCount, .finalUrl] | @tsv')"
+# TIMING is tab-separated: total ttfb connect statusCode sizeDownload redirectCount finalUrl
+IFS=$'\t' read -r TOTAL_TIME TTFB _CONNECT STATUS SIZE REDIRECT_COUNT FINAL_URL <<< "$TIMING"
 
 # Parse response headers into a JSON object using jq for safe escaping.
 # curl -L writes multiple blocks on redirect; jq keeps the last definition
