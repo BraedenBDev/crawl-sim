@@ -16,20 +16,60 @@ BOT_NAME=$(jq -r '.name' "$PROFILE")
 UA=$(jq -r '.userAgent' "$PROFILE")
 RENDERS_JS=$(jq -r '.rendersJavaScript' "$PROFILE")
 
-printf '[fetch-as-bot] %s <- %s\n' "$BOT_NAME" "$URL" >&2
-
 TMPDIR="${TMPDIR:-/tmp}"
 HEADERS_FILE=$(mktemp "$TMPDIR/crawlsim-headers.XXXXXX")
 BODY_FILE=$(mktemp "$TMPDIR/crawlsim-body.XXXXXX")
-trap 'rm -f "$HEADERS_FILE" "$BODY_FILE"' EXIT
+CURL_STDERR_FILE=$(mktemp "$TMPDIR/crawlsim-stderr.XXXXXX")
+trap 'rm -f "$HEADERS_FILE" "$BODY_FILE" "$CURL_STDERR_FILE"' EXIT
 
+printf '[%s] fetching %s\n' "$BOT_ID" "$URL" >&2
+
+set +e
 TIMING=$(curl -sS -L \
   -H "User-Agent: $UA" \
   -D "$HEADERS_FILE" \
   -o "$BODY_FILE" \
   -w '{"total":%{time_total},"ttfb":%{time_starttransfer},"connect":%{time_connect},"statusCode":%{http_code},"sizeDownload":%{size_download}}' \
   --max-time 30 \
-  "$URL" 2>/dev/null || echo '{"total":0,"ttfb":0,"connect":0,"statusCode":0,"sizeDownload":0}')
+  "$URL" 2>"$CURL_STDERR_FILE")
+CURL_EXIT=$?
+set -e
+
+CURL_ERR=""
+if [ -s "$CURL_STDERR_FILE" ]; then
+  CURL_ERR=$(cat "$CURL_STDERR_FILE")
+fi
+
+if [ "$CURL_EXIT" -ne 0 ]; then
+  printf '[%s] FAILED: curl exit %d — %s\n' "$BOT_ID" "$CURL_EXIT" "$CURL_ERR" >&2
+  jq -n \
+    --arg url "$URL" \
+    --arg botId "$BOT_ID" \
+    --arg botName "$BOT_NAME" \
+    --arg ua "$UA" \
+    --arg rendersJs "$RENDERS_JS" \
+    --arg error "$CURL_ERR" \
+    --argjson exitCode "$CURL_EXIT" \
+    '{
+      url: $url,
+      bot: {
+        id: $botId,
+        name: $botName,
+        userAgent: $ua,
+        rendersJavaScript: (if $rendersJs == "true" then true elif $rendersJs == "false" then false else $rendersJs end)
+      },
+      fetchFailed: true,
+      error: $error,
+      curlExitCode: $exitCode,
+      status: 0,
+      timing: { total: 0, ttfb: 0 },
+      size: 0,
+      wordCount: 0,
+      headers: {},
+      bodyBase64: ""
+    }'
+  exit 0
+fi
 
 STATUS=$(echo "$TIMING" | jq -r '.statusCode')
 TOTAL_TIME=$(echo "$TIMING" | jq -r '.total')
@@ -56,6 +96,8 @@ BODY_B64=""
 if [ -s "$BODY_FILE" ]; then
   BODY_B64=$(base64 < "$BODY_FILE")
 fi
+
+printf '[%s] ok: status=%s size=%s words=%s time=%ss\n' "$BOT_ID" "$STATUS" "$SIZE" "$WORD_COUNT" "$TOTAL_TIME" >&2
 
 jq -n \
   --arg url "$URL" \
