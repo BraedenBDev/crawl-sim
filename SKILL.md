@@ -115,6 +115,14 @@ Tell the user: "Computing per-bot scores and finalizing the report..."
 cp "$RUN_DIR/score.json" ./crawl-sim-report.json
 ```
 
+**Page-type awareness.** `compute-score.sh` derives a page type from the target URL (`root` / `detail` / `archive` / `faq` / `about` / `contact` / `generic`) and picks a schema rubric accordingly. Root pages are expected to ship `Organization` + `WebSite` — penalizing them for missing `BreadcrumbList` or `FAQPage` would be wrong, so the scorer doesn't. If the URL heuristic picks the wrong type (e.g., a homepage at `/en/` that URL-parses as generic), pass `--page-type <type>`:
+
+```bash
+"$SKILL_DIR/scripts/compute-score.sh" --page-type root "$RUN_DIR" > "$RUN_DIR/score.json"
+```
+
+Valid values: `root`, `detail`, `archive`, `faq`, `about`, `contact`, `generic`. The detected (or overridden) page type is exposed on `score.pageType`, and `score.pageTypeOverridden` flips `true` when `--page-type` was used.
+
 ## Output Layer 1 — Score Card (ASCII)
 
 Print a boxed score card to the terminal:
@@ -168,6 +176,7 @@ Then produce **prioritized findings** ranked by total point impact across bots:
 ### Interpretation rules
 
 - **Cross-bot deltas are the headline.** Compare `visibility.effectiveWords` across bots — if Googlebot has significantly more than the AI bots, that's finding #1. The raw delta is in `visibility.missedWordsVsRendered`.
+- **Trust the structuredData rubric.** Every `bots.<bot>.categories.structuredData` block now carries `pageType`, `expected`, `optional`, `forbidden`, `present`, `missing`, `extras`, `violations`, `calculation`, and `notes`. Read `missing` and `violations` directly — never guess what the scorer was penalizing for. If `notes` says the page scores 100 with no action needed, that IS the finding; don't invent fixes. If the rubric looks wrong for this specific page (e.g., a homepage detected as `generic` because the URL ends in `/en/`), rerun with `--page-type <correct-type>` instead of arguing with the score. Never recommend adding a schema that already appears in `present` or `extras`.
 - **Confidence transparency.** If a claim depends on a bot profile's `rendersJavaScript: false` at `observed` confidence (not `official`), note it: *"Based on observed behavior, not official documentation."*
 - **Framework detection.** Scan the HTML body for signals: `<meta name="next-head-count">` or `_next/static` → Next.js (Pages Router or App Router respectively), `<div id="__nuxt">` → Nuxt, `<div id="app">` with thin content → SPA (Vue/React CSR), `<!--$-->` placeholder tags → React 18 Suspense. Use these to tailor fix recommendations.
 - **No speculation beyond the data.** If server HTML has 0 `<a>` tags inside a component, say "component not present in server HTML" — not "JavaScript hydration failed" unless the diff-render data proves it.

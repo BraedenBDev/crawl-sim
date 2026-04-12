@@ -1,9 +1,12 @@
 {
   "name": "@braedenbuilds/crawl-sim",
-  "version": "1.0.5",
+  "version": "1.1.0",
   "description": "Agent-native multi-bot web crawler simulator. See your site through the eyes of Googlebot, GPTBot, ClaudeBot, and PerplexityBot.",
   "bin": {
     "crawl-sim": "bin/install.js"
+  },
+  "scripts": {
+    "test": "./test/run-scoring-tests.sh"
   },
   "keywords": [
     "seo",

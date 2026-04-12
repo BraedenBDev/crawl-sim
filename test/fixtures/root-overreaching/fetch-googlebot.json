@@ -1,0 +1,19 @@
+{
+  "url": "https://example.com/",
+  "status": 200,
+  "size": 12345,
+  "wordCount": 450,
+  "timing": {
+    "total": 1.2,
+    "connect": 0.1,
+    "firstByte": 0.4
+  },
+  "bot": {
+    "id": "googlebot",
+    "name": "Googlebot",
+    "rendersJavaScript": true,
+    "robotsTxtToken": "Googlebot"
+  },
+  "finalUrl": "https://example.com/",
+  "bodyBase64": ""
+}
