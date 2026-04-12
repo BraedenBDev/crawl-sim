@@ -51,7 +51,7 @@ Split the work into **five Bash invocations**, each with a clear `description` f
 
 ### Stage 1 — Fetch
 
-Tell the user: "Fetching as Googlebot, GPTBot, ClaudeBot, and PerplexityBot..."
+Tell the user: "Fetching as Googlebot, GPTBot, ClaudeBot, and PerplexityBot in parallel..."
 
 ```bash
 # Resolve skill directory
@@ -67,7 +67,16 @@ fi
 RUN_DIR=$(mktemp -d -t crawl-sim.XXXXXX)
 URL="<user-provided-url>"
 for bot in googlebot gptbot claudebot perplexitybot; do
-  "$SKILL_DIR/scripts/fetch-as-bot.sh" "$URL" "$SKILL_DIR/profiles/${bot}.json" > "$RUN_DIR/fetch-${bot}.json"
+  "$SKILL_DIR/scripts/fetch-as-bot.sh" "$URL" "$SKILL_DIR/profiles/${bot}.json" > "$RUN_DIR/fetch-${bot}.json" &
+done
+wait
+
+# Verify no empty fetch files (guard against silent parallel failures)
+for bot in googlebot gptbot claudebot perplexitybot; do
+  if [ ! -s "$RUN_DIR/fetch-${bot}.json" ]; then
+    echo "WARNING: fetch-${bot}.json is empty — retrying serially" >&2
+    "$SKILL_DIR/scripts/fetch-as-bot.sh" "$URL" "$SKILL_DIR/profiles/${bot}.json" > "$RUN_DIR/fetch-${bot}.json"
+  fi
 done
 ```
 
