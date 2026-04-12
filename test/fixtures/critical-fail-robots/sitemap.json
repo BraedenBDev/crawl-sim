@@ -1,0 +1,8 @@
+{
+  "url": "https://example.com/",
+  "sitemapUrl": "https://example.com/sitemap.xml",
+  "exists": true,
+  "urlCount": 42,
+  "hasLastmod": true,
+  "containsTarget": true
+}

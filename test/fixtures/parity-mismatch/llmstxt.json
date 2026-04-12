@@ -1,1 +1,13 @@
-{"url":"https://example.com/","llmsTxt":{"exists":false,"hasTitle":false,"hasDescription":false,"urlCount":0},"llmsFullTxt":{"exists":false}}
+{
+  "url": "https://example.com/",
+  "llmsTxt": {
+    "exists": false,
+    "hasTitle": false,
+    "hasDescription": false,
+    "urlCount": 0
+  },
+  "llmsFullTxt": {
+    "exists": false
+  },
+  "exists": false
+}
