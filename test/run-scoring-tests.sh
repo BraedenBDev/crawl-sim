@@ -305,6 +305,16 @@ LLMS_TOP_EXISTS_ABSENT=$(jq -r '.exists | tostring' "$SCRIPT_DIR/fixtures/fetch-
 assert_eq "$LLMS_HAS_EXISTS" "true" "fetch-failed fixture has exists key"
 assert_eq "$LLMS_TOP_EXISTS_ABSENT" "false" "top-level exists false when neither variant exists"
 
+# ----- AI readiness: llms-full.txt credited same as llms.txt -----
+
+case_begin "AI readiness: llms-full.txt only still scores AI points"
+if OUT=$(run_score llms-full-only 2>/dev/null); then
+  AI_SCORE=$(printf '%s' "$OUT" | jq -r '.bots.googlebot.categories.aiReadiness.score')
+  assert_ge "$AI_SCORE" "60" "llms-full.txt earns AI readiness points (got $AI_SCORE)"
+else
+  fail "compute-score.sh exited non-zero on llms-full-only"
+fi
+
 # ----- M3: extract-links.sh flat schema (AC-6) -----
 
 case_begin "AC-6/M3: links fixture uses flat schema with top-level total"

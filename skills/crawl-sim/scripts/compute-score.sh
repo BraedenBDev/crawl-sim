@@ -547,13 +547,13 @@ for bot_id in $BOTS; do
 
   # --- Category 5: AI Readiness (0-100) ---
   AI=0
-  # Batch-read llmstxt fields (1 jq call instead of 4)
+  # Batch-read llmstxt fields — use top-level exists (M1) which covers both variants
   read -r LLMS_EXISTS LLMS_HAS_TITLE LLMS_HAS_DESC LLMS_URLS <<< \
     "$(jq -r '[
-      (.llmsTxt.exists // false | tostring),
-      (.llmsTxt.hasTitle // false | tostring),
-      (.llmsTxt.hasDescription // false | tostring),
-      (.llmsTxt.urlCount // 0)
+      (.exists // (.llmsTxt.exists or .llmsFullTxt.exists) | tostring),
+      ((.llmsTxt.hasTitle // .llmsFullTxt.hasTitle // false) | tostring),
+      ((.llmsTxt.hasDescription // .llmsFullTxt.hasDescription // false) | tostring),
+      ((.llmsTxt.urlCount // 0) + (.llmsFullTxt.urlCount // 0))
     ] | @tsv' "$LLMSTXT_FILE" 2>/dev/null || echo "false	false	false	0")"
 
   if [ "$LLMS_EXISTS" = "true" ]; then

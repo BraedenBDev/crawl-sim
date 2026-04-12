@@ -1,0 +1,19 @@
+{
+  "blockCount": 2,
+  "validCount": 2,
+  "invalidCount": 0,
+  "types": ["Organization", "WebSite"],
+  "blocks": [
+    { "type": "Organization", "fields": ["name", "url"] },
+    { "type": "WebSite", "fields": ["name", "url"] }
+  ],
+  "flags": {
+    "hasOrganization": true,
+    "hasBreadcrumbList": false,
+    "hasWebSite": true,
+    "hasArticle": false,
+    "hasFAQPage": false,
+    "hasProduct": false,
+    "hasProfessionalService": false
+  }
+}
