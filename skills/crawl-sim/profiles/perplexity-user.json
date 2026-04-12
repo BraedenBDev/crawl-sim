@@ -4,7 +4,7 @@
   "vendor": "Perplexity",
   "userAgent": "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; Perplexity-User/1.0; +https://perplexity.ai/perplexity-user)",
   "robotsTxtToken": "Perplexity-User",
-  "purpose": "user-initiated",
+  "purpose": "user_retrieval",
   "rendersJavaScript": "unknown",
   "respectsRobotsTxt": false,
   "crawlDelaySupported": "unknown",
@@ -23,6 +23,10 @@
     }
   },
   "lastVerified": "2026-04-11",
-  "relatedBots": ["perplexitybot"],
-  "notes": "Supports user actions within Perplexity. Not used for web crawling or AI training. Generally ignores robots.txt since fetches are user-initiated."
+  "relatedBots": [
+    "perplexitybot"
+  ],
+  "notes": "Supports user actions within Perplexity. Not used for web crawling or AI training. Generally ignores robots.txt since fetches are user-initiated.",
+  "cloudflareCategory": "ai_assistant",
+  "robotsTxtEnforceability": "advisory_only"
 }

@@ -23,6 +23,11 @@
     }
   },
   "lastVerified": "2026-04-11",
-  "relatedBots": ["claude-user", "claude-searchbot"],
-  "notes": "Collects web content that could potentially contribute to AI model training. Crawl-delay explicitly supported (non-standard). Blocking IP addresses will not reliably work."
+  "relatedBots": [
+    "claude-user",
+    "claude-searchbot"
+  ],
+  "notes": "Collects web content that could potentially contribute to AI model training. Crawl-delay explicitly supported (non-standard). Blocking IP addresses will not reliably work.",
+  "cloudflareCategory": "ai_crawler",
+  "robotsTxtEnforceability": "enforced"
 }

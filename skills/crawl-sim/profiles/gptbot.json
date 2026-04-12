@@ -23,6 +23,11 @@
     }
   },
   "lastVerified": "2026-04-11",
-  "relatedBots": ["oai-searchbot", "chatgpt-user"],
-  "notes": "Disallowing GPTBot indicates a site's content should not be used in training generative AI foundation models."
+  "relatedBots": [
+    "oai-searchbot",
+    "chatgpt-user"
+  ],
+  "notes": "Disallowing GPTBot indicates a site's content should not be used in training generative AI foundation models.",
+  "cloudflareCategory": "ai_crawler",
+  "robotsTxtEnforceability": "enforced"
 }

@@ -23,6 +23,11 @@
     }
   },
   "lastVerified": "2026-04-11",
-  "relatedBots": ["gptbot", "chatgpt-user"],
-  "notes": "Sites opted out of OAI-SearchBot will not be shown in ChatGPT search answers, though can still appear as navigational links."
+  "relatedBots": [
+    "gptbot",
+    "chatgpt-user"
+  ],
+  "notes": "Sites opted out of OAI-SearchBot will not be shown in ChatGPT search answers, though can still appear as navigational links.",
+  "cloudflareCategory": "ai_search",
+  "robotsTxtEnforceability": "enforced"
 }
