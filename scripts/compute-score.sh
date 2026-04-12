@@ -2,7 +2,7 @@
 set -eu
 
 # compute-score.sh — Aggregate check outputs into per-bot + per-category scores
-# Usage: compute-score.sh <results-dir>
+# Usage: compute-score.sh [--page-type <type>] <results-dir>
 # Output: JSON to stdout
 #
 # Expected filenames in <results-dir>:
@@ -14,8 +14,41 @@ set -eu
 #   llmstxt.json             — check-llmstxt.sh output (bot-independent)
 #   sitemap.json             — check-sitemap.sh output (bot-independent)
 #   diff-render.json         — diff-render.sh output (optional, Googlebot only)
+#
+# The --page-type flag overrides URL-based page-type detection. Valid values:
+# root, detail, archive, faq, about, contact, generic.
 
-RESULTS_DIR="${1:?Usage: compute-score.sh <results-dir>}"
+PAGE_TYPE_OVERRIDE=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --page-type)
+      [ $# -ge 2 ] || { echo "--page-type requires a value" >&2; exit 2; }
+      PAGE_TYPE_OVERRIDE="$2"
+      shift 2
+      ;;
+    --page-type=*)
+      PAGE_TYPE_OVERRIDE="${1#--page-type=}"
+      shift
+      ;;
+    -h|--help)
+      echo "Usage: compute-score.sh [--page-type <type>] <results-dir>"
+      exit 0
+      ;;
+    --)
+      shift
+      break
+      ;;
+    -*)
+      echo "Unknown flag: $1" >&2
+      exit 2
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
+
+RESULTS_DIR="${1:?Usage: compute-score.sh [--page-type <type>] <results-dir>}"
 printf '[compute-score] aggregating %s\n' "$RESULTS_DIR" >&2
 
 if [ ! -d "$RESULTS_DIR" ]; then
@@ -31,7 +64,6 @@ W_TECHNICAL=15
 W_AI=10
 
 # Overall composite weights (per bot)
-# Default: Googlebot 40, GPTBot 20, ClaudeBot 20, PerplexityBot 20
 overall_weight() {
   case "$1" in
     googlebot) echo 40 ;;
@@ -42,7 +74,6 @@ overall_weight() {
   esac
 }
 
-# Grade from score (0-100)
 grade_for() {
   local s=$1
   if   [ "$s" -ge 93 ]; then echo "A"
@@ -57,6 +88,124 @@ grade_for() {
   elif [ "$s" -ge 63 ]; then echo "D"
   elif [ "$s" -ge 60 ]; then echo "D-"
   else echo "F"
+  fi
+}
+
+# Detect page type from a URL. Pure-bash, no external deps.
+page_type_for_url() {
+  local url="$1"
+  local path
+  path=$(printf '%s' "$url" | sed -E 's#^https?://[^/]+##' | sed 's#[?#].*##')
+  if [ -z "$path" ] || [ "$path" = "/" ]; then
+    echo "root"
+    return
+  fi
+  local trimmed
+  trimmed=$(printf '%s' "$path" | sed 's#^/##' | sed 's#/$##')
+  local lower
+  lower=$(printf '%s' "$trimmed" | tr '[:upper:]' '[:lower:]')
+  case "$lower" in
+    "") echo "root" ;;
+    work|journal|blog|articles|news|careers|projects|case-studies|cases)
+      echo "archive" ;;
+    work/*|articles/*|journal/*|blog/*|news/*|case-studies/*|cases/*|case/*|careers/*|projects/*)
+      echo "detail" ;;
+    *faq*) echo "faq" ;;
+    *about*|*team*|*purpose*|*who-we-are*) echo "about" ;;
+    *contact*) echo "contact" ;;
+    *) echo "generic" ;;
+  esac
+}
+
+# Rubric: expected schema types per page type.
+rubric_expected() {
+  case "$1" in
+    root)    echo "Organization WebSite" ;;
+    detail)  echo "Article BreadcrumbList" ;;
+    archive) echo "CollectionPage ItemList BreadcrumbList" ;;
+    faq)     echo "FAQPage BreadcrumbList" ;;
+    about)   echo "AboutPage BreadcrumbList Organization" ;;
+    contact) echo "ContactPage BreadcrumbList" ;;
+    *)       echo "WebPage BreadcrumbList" ;;
+  esac
+}
+
+rubric_optional() {
+  case "$1" in
+    root)    echo "ProfessionalService LocalBusiness" ;;
+    detail)  echo "NewsArticle ImageObject Person" ;;
+    archive) echo "" ;;
+    faq)     echo "WebPage" ;;
+    about)   echo "Person" ;;
+    contact) echo "PostalAddress" ;;
+    *)       echo "" ;;
+  esac
+}
+
+rubric_forbidden() {
+  case "$1" in
+    root)    echo "BreadcrumbList Article FAQPage" ;;
+    detail)  echo "CollectionPage ItemList" ;;
+    archive) echo "Article Product" ;;
+    faq)     echo "Article CollectionPage" ;;
+    about)   echo "Article Product" ;;
+    contact) echo "Article Product" ;;
+    *)       echo "" ;;
+  esac
+}
+
+# Space-separated list helpers. Empty lists are the empty string.
+list_contains() {
+  local needle="$1"
+  shift
+  local item
+  for item in "$@"; do
+    [ "$item" = "$needle" ] && return 0
+  done
+  return 1
+}
+
+list_count() {
+  # shellcheck disable=SC2086
+  set -- $1
+  echo "$#"
+}
+
+# Intersection: items in list A that also appear in list B, preserving A's order.
+list_intersect() {
+  local a="$1" b="$2"
+  local out="" item
+  # shellcheck disable=SC2086
+  for item in $a; do
+    # shellcheck disable=SC2086
+    if list_contains "$item" $b; then
+      out="$out $item"
+    fi
+  done
+  printf '%s' "${out# }"
+}
+
+# Difference: items in list A that are NOT in list B, preserving A's order.
+list_diff() {
+  local a="$1" b="$2"
+  local out="" item
+  # shellcheck disable=SC2086
+  for item in $a; do
+    # shellcheck disable=SC2086
+    if ! list_contains "$item" $b; then
+      out="$out $item"
+    fi
+  done
+  printf '%s' "${out# }"
+}
+
+# Convert a space-separated list to a JSON array string for jq consumption.
+list_to_json_array() {
+  local list="$1"
+  if [ -z "$list" ]; then
+    echo "[]"
+  else
+    printf '%s' "$list" | tr ' ' '\n' | jq -R . | jq -s .
   fi
 }
 
@@ -75,7 +224,6 @@ jget() {
 jget_num() {
   local v
   v=$(jget "$1" "$2" "0")
-  # Replace "null" or non-numeric with 0
   if ! printf '%s' "$v" | grep -qE '^-?[0-9]+(\.[0-9]+)?$'; then
     echo "0"
   else
@@ -105,14 +253,10 @@ LLMSTXT_FILE="$RESULTS_DIR/llmstxt.json"
 SITEMAP_FILE="$RESULTS_DIR/sitemap.json"
 DIFF_RENDER_FILE="$RESULTS_DIR/diff-render.json"
 
-# Load Playwright render-delta data once (used to differentiate JS-rendering
-# bots from non-rendering ones). If the comparison was skipped or missing,
-# all bots score against server HTML only.
 DIFF_AVAILABLE=false
 DIFF_RENDERED_WORDS=0
 DIFF_DELTA_PCT=0
 if [ -f "$DIFF_RENDER_FILE" ]; then
-  # Explicit null check — `.skipped // true` would treat real false as null.
   DIFF_SKIPPED=$(jq -r '.skipped | if . == null then "true" else tostring end' "$DIFF_RENDER_FILE" 2>/dev/null || echo "true")
   if [ "$DIFF_SKIPPED" = "false" ]; then
     DIFF_AVAILABLE=true
@@ -121,9 +265,25 @@ if [ -f "$DIFF_RENDER_FILE" ]; then
   fi
 fi
 
+# Resolve page type once from the first fetch file's URL, unless overridden.
+FIRST_FETCH=$(ls "$RESULTS_DIR"/fetch-*.json | head -1)
+TARGET_URL=$(jget "$FIRST_FETCH" '.url' "")
+if [ -n "$PAGE_TYPE_OVERRIDE" ]; then
+  PAGE_TYPE="$PAGE_TYPE_OVERRIDE"
+else
+  PAGE_TYPE=$(page_type_for_url "$TARGET_URL")
+fi
+printf '[compute-score] page type: %s (url: %s)\n' "$PAGE_TYPE" "$TARGET_URL" >&2
+
+# Rubric sets for this run
+RUBRIC_EXPECTED="$(rubric_expected "$PAGE_TYPE")"
+RUBRIC_OPTIONAL="$(rubric_optional "$PAGE_TYPE")"
+RUBRIC_FORBIDDEN="$(rubric_forbidden "$PAGE_TYPE")"
+EXPECTED_COUNT=$(list_count "$RUBRIC_EXPECTED")
+[ "$EXPECTED_COUNT" -lt 1 ] && EXPECTED_COUNT=1  # avoid div-by-zero
+
 BOTS_JSON="{}"
 
-# Accumulators for per-category averages (across bots)
 CAT_ACCESSIBILITY_SUM=0
 CAT_CONTENT_SUM=0
 CAT_STRUCTURED_SUM=0
@@ -131,7 +291,6 @@ CAT_TECHNICAL_SUM=0
 CAT_AI_SUM=0
 CAT_N=0
 
-# Accumulators for overall weighted composite
 OVERALL_WEIGHTED_SUM=0
 OVERALL_WEIGHT_TOTAL=0
 
@@ -146,17 +305,10 @@ for bot_id in $BOTS; do
   STATUS=$(jget_num "$FETCH" '.status')
   TOTAL_TIME=$(jget_num "$FETCH" '.timing.total')
   SERVER_WORD_COUNT=$(jget_num "$FETCH" '.wordCount')
-  # Read with explicit null fallback — jq's `//` is unsafe here because it
-  # treats boolean false as falsy, which is exactly the value we need to see.
   RENDERS_JS=$(jq -r '.bot.rendersJavaScript | if . == null then "unknown" else tostring end' "$FETCH" 2>/dev/null || echo "unknown")
 
   ROBOTS_ALLOWED=$(jget_bool "$ROBOTS" '.allowed')
 
-  # Effective word count depends on JS rendering capability:
-  # - true (e.g. Googlebot) + diff-render data → rendered DOM word count
-  # - false (AI training/search bots, observed) → server HTML only, with
-  #   penalty proportional to the rendering delta
-  # - unknown → conservative: server HTML (same as false but no penalty)
   EFFECTIVE_WORD_COUNT=$SERVER_WORD_COUNT
   HYDRATION_PENALTY=0
   MISSED_WORDS=0
@@ -164,11 +316,8 @@ for bot_id in $BOTS; do
     if [ "$RENDERS_JS" = "true" ]; then
       EFFECTIVE_WORD_COUNT=$DIFF_RENDERED_WORDS
     elif [ "$RENDERS_JS" = "false" ]; then
-      # Absolute-value delta: if rendered DOM has materially more than server,
-      # AI bots are missing that content.
       ABS_DELTA=$(awk -v d="$DIFF_DELTA_PCT" 'BEGIN { printf "%d", (d < 0 ? -d : d) + 0.5 }')
       if [ "$ABS_DELTA" -gt 5 ]; then
-        # Scale penalty: 5% delta = 0, 10% = 5, 20%+ = 15 (cap)
         HYDRATION_PENALTY=$(awk -v d="$ABS_DELTA" 'BEGIN {
           p = (d - 5)
           if (p > 15) p = 15
@@ -182,11 +331,8 @@ for bot_id in $BOTS; do
 
   # --- Category 1: Accessibility (0-100) ---
   ACC=0
-  # robots.txt allows: 40
   [ "$ROBOTS_ALLOWED" = "true" ] && ACC=$((ACC + 40))
-  # HTTP 200: 40
   [ "$STATUS" = "200" ] && ACC=$((ACC + 40))
-  # Response time: <2s = 20, <5s = 10, else 0
   TIME_SCORE=$(awk -v t="$TOTAL_TIME" 'BEGIN { if (t < 2) print 20; else if (t < 5) print 10; else print 0 }')
   ACC=$((ACC + TIME_SCORE))
 
@@ -216,33 +362,93 @@ for bot_id in $BOTS; do
     CONTENT=$((CONTENT + ALT_SCORE))
   fi
 
-  # Apply hydration penalty for non-rendering bots that are missing content
   CONTENT=$((CONTENT - HYDRATION_PENALTY))
   [ $CONTENT -lt 0 ] && CONTENT=0
 
-  # --- Category 3: Structured Data (0-100) ---
-  STRUCTURED=0
+  # --- Category 3: Structured Data (0-100) — page-type-aware, self-explaining ---
   JSONLD_COUNT=$(jget_num "$JSONLD" '.blockCount')
   JSONLD_VALID=$(jget_num "$JSONLD" '.validCount')
   JSONLD_INVALID=$(jget_num "$JSONLD" '.invalidCount')
-  HAS_ORG=$(jget_bool "$JSONLD" '.flags.hasOrganization')
-  HAS_WEBSITE=$(jget_bool "$JSONLD" '.flags.hasWebSite')
-  HAS_BREADCRUMB=$(jget_bool "$JSONLD" '.flags.hasBreadcrumbList')
-  HAS_ARTICLE=$(jget_bool "$JSONLD" '.flags.hasArticle')
-  HAS_PRODUCT=$(jget_bool "$JSONLD" '.flags.hasProduct')
-  HAS_FAQ=$(jget_bool "$JSONLD" '.flags.hasFAQPage')
 
-  [ "$JSONLD_COUNT" -ge 1 ] && STRUCTURED=$((STRUCTURED + 30))
-  if [ "$JSONLD_COUNT" -ge 1 ] && [ "$JSONLD_INVALID" -eq 0 ]; then
-    STRUCTURED=$((STRUCTURED + 20))
+  # Pull types[] from jsonld-*.json. Flatten to a space-separated, de-duplicated list.
+  if [ -f "$JSONLD" ]; then
+    PRESENT_TYPES=$(jq -r '.types[]? // empty' "$JSONLD" 2>/dev/null | awk 'NF && !seen[$0]++' | tr '\n' ' ')
+    PRESENT_TYPES=${PRESENT_TYPES% }
+  else
+    PRESENT_TYPES=""
   fi
-  if [ "$HAS_ORG" = "true" ] || [ "$HAS_WEBSITE" = "true" ]; then
-    STRUCTURED=$((STRUCTURED + 20))
+
+  PRESENT_EXPECTED=$(list_intersect "$RUBRIC_EXPECTED" "$PRESENT_TYPES")
+  PRESENT_OPTIONAL=$(list_intersect "$RUBRIC_OPTIONAL" "$PRESENT_TYPES")
+  PRESENT_FORBIDDEN=$(list_intersect "$RUBRIC_FORBIDDEN" "$PRESENT_TYPES")
+  MISSING_EXPECTED=$(list_diff "$RUBRIC_EXPECTED" "$PRESENT_TYPES")
+  RUBRIC_KNOWN="$RUBRIC_EXPECTED $RUBRIC_OPTIONAL $RUBRIC_FORBIDDEN"
+  EXTRAS=$(list_diff "$PRESENT_TYPES" "$RUBRIC_KNOWN")
+
+  PRESENT_EXPECTED_COUNT=$(list_count "$PRESENT_EXPECTED")
+  PRESENT_OPTIONAL_COUNT=$(list_count "$PRESENT_OPTIONAL")
+  PRESENT_FORBIDDEN_COUNT=$(list_count "$PRESENT_FORBIDDEN")
+
+  # Base: percentage of expected types present.
+  BASE=$(awk -v h="$PRESENT_EXPECTED_COUNT" -v t="$EXPECTED_COUNT" \
+    'BEGIN { printf "%d", (h / t) * 100 + 0.5 }')
+
+  # Optional bonus: 10 per optional type, capped at 20.
+  BONUS=$((PRESENT_OPTIONAL_COUNT * 10))
+  [ $BONUS -gt 20 ] && BONUS=20
+
+  # Forbidden penalty: 10 per forbidden type present.
+  FORBID_PENALTY=$((PRESENT_FORBIDDEN_COUNT * 10))
+
+  # Validity penalty: 5 per invalid JSON-LD block, capped at 20.
+  VALID_PENALTY=0
+  if [ "$JSONLD_COUNT" -gt 0 ] && [ "$JSONLD_INVALID" -gt 0 ]; then
+    VALID_PENALTY=$((JSONLD_INVALID * 5))
+    [ $VALID_PENALTY -gt 20 ] && VALID_PENALTY=20
   fi
-  [ "$HAS_BREADCRUMB" = "true" ] && STRUCTURED=$((STRUCTURED + 15))
-  if [ "$HAS_ARTICLE" = "true" ] || [ "$HAS_PRODUCT" = "true" ] || [ "$HAS_FAQ" = "true" ]; then
-    STRUCTURED=$((STRUCTURED + 15))
+
+  STRUCTURED=$((BASE + BONUS - FORBID_PENALTY - VALID_PENALTY))
+  [ $STRUCTURED -gt 100 ] && STRUCTURED=100
+  [ $STRUCTURED -lt 0 ] && STRUCTURED=0
+
+  # Build the human-readable calculation + notes strings.
+  CALCULATION=$(printf 'base: %d/%d expected present = %d; +%d optional bonus; -%d forbidden penalty; -%d validity penalty; clamp [0,100] = %d' \
+    "$PRESENT_EXPECTED_COUNT" "$EXPECTED_COUNT" "$BASE" \
+    "$BONUS" "$FORBID_PENALTY" "$VALID_PENALTY" "$STRUCTURED")
+
+  if [ "$STRUCTURED" -ge 100 ] && [ -z "$PRESENT_FORBIDDEN" ] && [ "$VALID_PENALTY" -eq 0 ]; then
+    NOTES="All expected schemas for pageType=$PAGE_TYPE are present. No structured-data action needed."
+  elif [ -n "$MISSING_EXPECTED" ] && [ -z "$PRESENT_FORBIDDEN" ]; then
+    NOTES="Missing expected schemas for pageType=$PAGE_TYPE: $MISSING_EXPECTED. Add these to raise the score."
+  elif [ -n "$PRESENT_FORBIDDEN" ] && [ -z "$MISSING_EXPECTED" ]; then
+    NOTES="Forbidden schemas present for pageType=$PAGE_TYPE: $PRESENT_FORBIDDEN. Remove these (or re-classify the page type with --page-type)."
+  elif [ -n "$PRESENT_FORBIDDEN" ] && [ -n "$MISSING_EXPECTED" ]; then
+    NOTES="Mixed: missing $MISSING_EXPECTED and forbidden present $PRESENT_FORBIDDEN for pageType=$PAGE_TYPE."
+  else
+    NOTES="Score reduced by $VALID_PENALTY pts due to invalid JSON-LD blocks."
   fi
+
+  # JSON array encodings for the explained block
+  EXPECTED_JSON=$(list_to_json_array "$RUBRIC_EXPECTED")
+  OPTIONAL_JSON=$(list_to_json_array "$RUBRIC_OPTIONAL")
+  FORBIDDEN_JSON=$(list_to_json_array "$RUBRIC_FORBIDDEN")
+  PRESENT_JSON=$(list_to_json_array "$PRESENT_TYPES")
+  MISSING_JSON=$(list_to_json_array "$MISSING_EXPECTED")
+  EXTRAS_JSON=$(list_to_json_array "$EXTRAS")
+
+  # Violations: one entry per forbidden schema present, plus one entry per invalid-block penalty.
+  VIOLATIONS_JSON=$(jq -n \
+    --arg forb "$PRESENT_FORBIDDEN" \
+    --argjson invalidCount "$JSONLD_INVALID" \
+    --argjson validPenalty "$VALID_PENALTY" \
+    '
+    ($forb | split(" ") | map(select(length > 0))
+      | map({kind: "forbidden_schema", schema: ., impact: -10}))
+    + (if $validPenalty > 0
+         then [{kind: "invalid_jsonld", count: $invalidCount, impact: (0 - $validPenalty)}]
+         else []
+       end)
+    ')
 
   # --- Category 4: Technical Signals (0-100) ---
   TECHNICAL=0
@@ -279,21 +485,16 @@ for bot_id in $BOTS; do
     [ "$LLMS_HAS_DESC" = "true" ] && AI=$((AI + 7))
     [ "$LLMS_URLS" -ge 1 ] && AI=$((AI + 6))
   fi
-  # Content citable (>= 200 words, effective for this bot)
   [ "$EFFECTIVE_WORD_COUNT" -ge 200 ] && AI=$((AI + 20))
-  # Semantic clarity: has H1 + description
   if [ "$H1_COUNT" -ge 1 ] && [ -n "$DESCRIPTION" ] && [ "$DESCRIPTION" != "null" ]; then
     AI=$((AI + 20))
   fi
 
-  # Cap categories at 100
   [ $ACC -gt 100 ] && ACC=100
   [ $CONTENT -gt 100 ] && CONTENT=100
-  [ $STRUCTURED -gt 100 ] && STRUCTURED=100
   [ $TECHNICAL -gt 100 ] && TECHNICAL=100
   [ $AI -gt 100 ] && AI=100
 
-  # Per-bot composite score (weighted average of 5 categories)
   BOT_SCORE=$(awk -v a=$ACC -v c=$CONTENT -v s=$STRUCTURED -v t=$TECHNICAL -v ai=$AI \
     -v wa=$W_ACCESSIBILITY -v wc=$W_CONTENT -v ws=$W_STRUCTURED -v wt=$W_TECHNICAL -v wai=$W_AI \
     'BEGIN { printf "%d", (a*wa + c*wc + s*ws + t*wt + ai*wai) / (wa+wc+ws+wt+wai) + 0.5 }')
@@ -317,6 +518,16 @@ for bot_id in $BOTS; do
     --arg contentGrade "$CONTENT_GRADE" \
     --argjson structured "$STRUCTURED" \
     --arg structuredGrade "$STRUCTURED_GRADE" \
+    --arg structuredPageType "$PAGE_TYPE" \
+    --argjson structuredExpected "$EXPECTED_JSON" \
+    --argjson structuredOptional "$OPTIONAL_JSON" \
+    --argjson structuredForbidden "$FORBIDDEN_JSON" \
+    --argjson structuredPresent "$PRESENT_JSON" \
+    --argjson structuredMissing "$MISSING_JSON" \
+    --argjson structuredExtras "$EXTRAS_JSON" \
+    --argjson structuredViolations "$VIOLATIONS_JSON" \
+    --arg structuredCalculation "$CALCULATION" \
+    --arg structuredNotes "$NOTES" \
     --argjson technical "$TECHNICAL" \
     --arg technicalGrade "$TECHNICAL_GRADE" \
     --argjson ai "$AI" \
@@ -340,7 +551,20 @@ for bot_id in $BOTS; do
       categories: {
         accessibility:     { score: $acc,        grade: $accGrade },
         contentVisibility: { score: $content,    grade: $contentGrade },
-        structuredData:    { score: $structured, grade: $structuredGrade },
+        structuredData: {
+          score: $structured,
+          grade: $structuredGrade,
+          pageType: $structuredPageType,
+          expected: $structuredExpected,
+          optional: $structuredOptional,
+          forbidden: $structuredForbidden,
+          present: $structuredPresent,
+          missing: $structuredMissing,
+          extras: $structuredExtras,
+          violations: $structuredViolations,
+          calculation: $structuredCalculation,
+          notes: $structuredNotes
+        },
         technicalSignals:  { score: $technical,  grade: $technicalGrade },
         aiReadiness:       { score: $ai,         grade: $aiGrade }
       }
@@ -348,7 +572,6 @@ for bot_id in $BOTS; do
 
   BOTS_JSON=$(printf '%s' "$BOTS_JSON" | jq --argjson bot "$BOT_OBJ" --arg id "$bot_id" '.[$id] = $bot')
 
-  # Accumulate category averages
   CAT_ACCESSIBILITY_SUM=$((CAT_ACCESSIBILITY_SUM + ACC))
   CAT_CONTENT_SUM=$((CAT_CONTENT_SUM + CONTENT))
   CAT_STRUCTURED_SUM=$((CAT_STRUCTURED_SUM + STRUCTURED))
@@ -356,7 +579,6 @@ for bot_id in $BOTS; do
   CAT_AI_SUM=$((CAT_AI_SUM + AI))
   CAT_N=$((CAT_N + 1))
 
-  # Accumulate weighted overall
   W=$(overall_weight "$bot_id")
   if [ "$W" -gt 0 ]; then
     OVERALL_WEIGHTED_SUM=$((OVERALL_WEIGHTED_SUM + BOT_SCORE * W))
@@ -364,18 +586,15 @@ for bot_id in $BOTS; do
   fi
 done
 
-# Per-category averages (across all bots)
 CAT_ACC_AVG=$((CAT_ACCESSIBILITY_SUM / CAT_N))
 CAT_CONTENT_AVG=$((CAT_CONTENT_SUM / CAT_N))
 CAT_STRUCTURED_AVG=$((CAT_STRUCTURED_SUM / CAT_N))
 CAT_TECHNICAL_AVG=$((CAT_TECHNICAL_SUM / CAT_N))
 CAT_AI_AVG=$((CAT_AI_SUM / CAT_N))
 
-# Overall composite
 if [ "$OVERALL_WEIGHT_TOTAL" -gt 0 ]; then
   OVERALL_SCORE=$((OVERALL_WEIGHTED_SUM / OVERALL_WEIGHT_TOTAL))
 else
-  # Fall back to simple average if none of the 4 standard bots are present
   OVERALL_SCORE=$(((CAT_ACC_AVG + CAT_CONTENT_AVG + CAT_STRUCTURED_AVG + CAT_TECHNICAL_AVG + CAT_AI_AVG) / 5))
 fi
 
@@ -386,15 +605,14 @@ CAT_STRUCTURED_GRADE=$(grade_for "$CAT_STRUCTURED_AVG")
 CAT_TECHNICAL_GRADE=$(grade_for "$CAT_TECHNICAL_AVG")
 CAT_AI_GRADE=$(grade_for "$CAT_AI_AVG")
 
-# Get the URL from the first fetch file
-FIRST_FETCH=$(ls "$RESULTS_DIR"/fetch-*.json | head -1)
-TARGET_URL=$(jget "$FIRST_FETCH" '.url' "")
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 jq -n \
   --arg url "$TARGET_URL" \
   --arg timestamp "$TIMESTAMP" \
-  --arg version "0.1.0" \
+  --arg version "0.2.0" \
+  --arg pageType "$PAGE_TYPE" \
+  --argjson pageTypeOverridden "$( [ -n "$PAGE_TYPE_OVERRIDE" ] && echo true || echo false )" \
   --argjson overallScore "$OVERALL_SCORE" \
   --arg overallGrade "$OVERALL_GRADE" \
   --argjson bots "$BOTS_JSON" \
@@ -412,6 +630,8 @@ jq -n \
     url: $url,
     timestamp: $timestamp,
     version: $version,
+    pageType: $pageType,
+    pageTypeOverridden: $pageTypeOverridden,
     overall: { score: $overallScore, grade: $overallGrade },
     bots: $bots,
     categories: {
