@@ -1,6 +1,6 @@
 {
   "name": "crawl-sim",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Multi-bot web crawler simulator — audit how Googlebot, GPTBot, ClaudeBot, and PerplexityBot see your site",
   "author": {
     "name": "BraedenBDev",
