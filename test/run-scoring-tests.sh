@@ -44,7 +44,7 @@ assert_eq() {
 
 assert_lt() {
   local actual="$1" limit="$2" msg="$3"
-  if [ "$actual" -lt "$limit" ] 2>/dev/null; then
+  if [ "$actual" -lt "$limit" ]; then
     pass "$msg ($actual < $limit)"
   else
     fail "$msg — expected < $limit, got '$actual'"
@@ -53,7 +53,7 @@ assert_lt() {
 
 assert_ge() {
   local actual="$1" floor="$2" msg="$3"
-  if [ "$actual" -ge "$floor" ] 2>/dev/null; then
+  if [ "$actual" -ge "$floor" ]; then
     pass "$msg ($actual ≥ $floor)"
   else
     fail "$msg — expected ≥ $floor, got '$actual'"
@@ -136,7 +136,7 @@ else
 fi
 
 case_begin "AC2 validation: invalid --page-type is rejected"
-if "$COMPUTE_SCORE" --page-type pizza "$SCRIPT_DIR/fixtures/root-minimal" >/dev/null 2>&1; then
+if run_score root-minimal --page-type pizza >/dev/null 2>&1; then
   fail "compute-score.sh accepted invalid --page-type value"
 else
   pass "compute-score.sh rejected --page-type pizza with non-zero exit"

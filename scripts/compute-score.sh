@@ -143,7 +143,6 @@ rubric_forbidden() {
   esac
 }
 
-# Space-separated list helpers. Empty lists are the empty string.
 list_contains() {
   local needle="$1"
   shift
@@ -160,7 +159,6 @@ list_count() {
   echo "$#"
 }
 
-# Intersection: items in list A that also appear in list B, preserving A's order.
 list_intersect() {
   local a="$1" b="$2"
   local out="" item
@@ -174,7 +172,6 @@ list_intersect() {
   printf '%s' "${out# }"
 }
 
-# Difference: items in list A that are NOT in list B, preserving A's order.
 list_diff() {
   local a="$1" b="$2"
   local out="" item
@@ -188,17 +185,6 @@ list_diff() {
   printf '%s' "${out# }"
 }
 
-# Convert a space-separated list to a JSON array string for jq consumption.
-list_to_json_array() {
-  local list="$1"
-  if [ -z "$list" ]; then
-    echo "[]"
-  else
-    printf '%s' "$list" | tr ' ' '\n' | jq -R . | jq -s .
-  fi
-}
-
-# Read a jq value from a file with a default fallback
 jget() {
   local file="$1"
   local query="$2"
@@ -227,8 +213,10 @@ jget_bool() {
 }
 
 BOTS=""
+FIRST_FETCH=""
 for f in "$RESULTS_DIR"/fetch-*.json; do
   [ -f "$f" ] || continue
+  [ -z "$FIRST_FETCH" ] && FIRST_FETCH="$f"
   bot_id=$(basename "$f" .json | sed 's/^fetch-//')
   BOTS="$BOTS $bot_id"
 done
@@ -255,7 +243,6 @@ if [ -f "$DIFF_RENDER_FILE" ]; then
 fi
 
 # Resolve page type once from the first fetch file's URL, unless overridden.
-FIRST_FETCH=$(ls "$RESULTS_DIR"/fetch-*.json | head -1)
 TARGET_URL=$(jget "$FIRST_FETCH" '.url' "")
 if [ -n "$PAGE_TYPE_OVERRIDE" ]; then
   PAGE_TYPE="$PAGE_TYPE_OVERRIDE"
@@ -264,12 +251,10 @@ else
 fi
 printf '[compute-score] page type: %s (url: %s)\n' "$PAGE_TYPE" "$TARGET_URL" >&2
 
-# Rubric sets for this run
 RUBRIC_EXPECTED="$(rubric_expected "$PAGE_TYPE")"
 RUBRIC_OPTIONAL="$(rubric_optional "$PAGE_TYPE")"
 RUBRIC_FORBIDDEN="$(rubric_forbidden "$PAGE_TYPE")"
 EXPECTED_COUNT=$(list_count "$RUBRIC_EXPECTED")
-[ "$EXPECTED_COUNT" -lt 1 ] && EXPECTED_COUNT=1  # avoid div-by-zero
 
 BOTS_JSON="{}"
 
@@ -354,12 +339,11 @@ for bot_id in $BOTS; do
   CONTENT=$((CONTENT - HYDRATION_PENALTY))
   [ $CONTENT -lt 0 ] && CONTENT=0
 
-  # --- Category 3: Structured Data (0-100) — page-type-aware, self-explaining ---
+  # --- Category 3: Structured Data (0-100) ---
   JSONLD_COUNT=$(jget_num "$JSONLD" '.blockCount')
   JSONLD_VALID=$(jget_num "$JSONLD" '.validCount')
   JSONLD_INVALID=$(jget_num "$JSONLD" '.invalidCount')
 
-  # Pull types[] from jsonld-*.json. Flatten to a space-separated, de-duplicated list.
   if [ -f "$JSONLD" ]; then
     PRESENT_TYPES=$(jq -r '.types[]? // empty' "$JSONLD" 2>/dev/null | awk 'NF && !seen[$0]++' | tr '\n' ' ')
     PRESENT_TYPES=${PRESENT_TYPES% }
@@ -378,18 +362,14 @@ for bot_id in $BOTS; do
   PRESENT_OPTIONAL_COUNT=$(list_count "$PRESENT_OPTIONAL")
   PRESENT_FORBIDDEN_COUNT=$(list_count "$PRESENT_FORBIDDEN")
 
-  # Base: percentage of expected types present.
   BASE=$(awk -v h="$PRESENT_EXPECTED_COUNT" -v t="$EXPECTED_COUNT" \
-    'BEGIN { printf "%d", (h / t) * 100 + 0.5 }')
+    'BEGIN { if (t == 0) print 0; else printf "%d", (h / t) * 100 + 0.5 }')
 
-  # Optional bonus: 10 per optional type, capped at 20.
   BONUS=$((PRESENT_OPTIONAL_COUNT * 10))
   [ $BONUS -gt 20 ] && BONUS=20
 
-  # Forbidden penalty: 10 per forbidden type present.
   FORBID_PENALTY=$((PRESENT_FORBIDDEN_COUNT * 10))
 
-  # Validity penalty: 5 per invalid JSON-LD block, capped at 20.
   VALID_PENALTY=0
   if [ "$JSONLD_COUNT" -gt 0 ] && [ "$JSONLD_INVALID" -gt 0 ]; then
     VALID_PENALTY=$((JSONLD_INVALID * 5))
@@ -400,7 +380,6 @@ for bot_id in $BOTS; do
   [ $STRUCTURED -gt 100 ] && STRUCTURED=100
   [ $STRUCTURED -lt 0 ] && STRUCTURED=0
 
-  # Build the human-readable calculation + notes strings.
   CALCULATION=$(printf 'base: %d/%d expected present = %d; +%d optional bonus; -%d forbidden penalty; -%d validity penalty; clamp [0,100] = %d' \
     "$PRESENT_EXPECTED_COUNT" "$EXPECTED_COUNT" "$BASE" \
     "$BONUS" "$FORBID_PENALTY" "$VALID_PENALTY" "$STRUCTURED")
@@ -417,26 +396,44 @@ for bot_id in $BOTS; do
     NOTES="Score reduced by $VALID_PENALTY pts due to invalid JSON-LD blocks."
   fi
 
-  # JSON array encodings for the explained block
-  EXPECTED_JSON=$(list_to_json_array "$RUBRIC_EXPECTED")
-  OPTIONAL_JSON=$(list_to_json_array "$RUBRIC_OPTIONAL")
-  FORBIDDEN_JSON=$(list_to_json_array "$RUBRIC_FORBIDDEN")
-  PRESENT_JSON=$(list_to_json_array "$PRESENT_TYPES")
-  MISSING_JSON=$(list_to_json_array "$MISSING_EXPECTED")
-  EXTRAS_JSON=$(list_to_json_array "$EXTRAS")
-
-  # Violations: one entry per forbidden schema present, plus one entry per invalid-block penalty.
-  VIOLATIONS_JSON=$(jq -n \
-    --arg forb "$PRESENT_FORBIDDEN" \
+  STRUCTURED_GRADE=$(grade_for "$STRUCTURED")
+  STRUCTURED_OBJ=$(jq -n \
+    --argjson score "$STRUCTURED" \
+    --arg grade "$STRUCTURED_GRADE" \
+    --arg pageType "$PAGE_TYPE" \
+    --arg expectedList "$RUBRIC_EXPECTED" \
+    --arg optionalList "$RUBRIC_OPTIONAL" \
+    --arg forbiddenList "$RUBRIC_FORBIDDEN" \
+    --arg presentList "$PRESENT_TYPES" \
+    --arg missingList "$MISSING_EXPECTED" \
+    --arg extrasList "$EXTRAS" \
+    --arg forbiddenPresent "$PRESENT_FORBIDDEN" \
     --argjson invalidCount "$JSONLD_INVALID" \
     --argjson validPenalty "$VALID_PENALTY" \
+    --arg calculation "$CALCULATION" \
+    --arg notes "$NOTES" \
     '
-    ($forb | split(" ") | map(select(length > 0))
-      | map({kind: "forbidden_schema", schema: ., impact: -10}))
-    + (if $validPenalty > 0
-         then [{kind: "invalid_jsonld", count: $invalidCount, impact: (0 - $validPenalty)}]
-         else []
-       end)
+    def to_arr: split(" ") | map(select(length > 0));
+    {
+      score: $score,
+      grade: $grade,
+      pageType: $pageType,
+      expected:   ($expectedList   | to_arr),
+      optional:   ($optionalList   | to_arr),
+      forbidden:  ($forbiddenList  | to_arr),
+      present:    ($presentList    | to_arr),
+      missing:    ($missingList    | to_arr),
+      extras:     ($extrasList     | to_arr),
+      violations: (
+        ($forbiddenPresent | to_arr | map({kind: "forbidden_schema", schema: ., impact: -10}))
+        + (if $validPenalty > 0
+             then [{kind: "invalid_jsonld", count: $invalidCount, impact: (0 - $validPenalty)}]
+             else []
+           end)
+      ),
+      calculation: $calculation,
+      notes: $notes
+    }
     ')
 
   # --- Category 4: Technical Signals (0-100) ---
@@ -491,7 +488,6 @@ for bot_id in $BOTS; do
   BOT_GRADE=$(grade_for "$BOT_SCORE")
   ACC_GRADE=$(grade_for "$ACC")
   CONTENT_GRADE=$(grade_for "$CONTENT")
-  STRUCTURED_GRADE=$(grade_for "$STRUCTURED")
   TECHNICAL_GRADE=$(grade_for "$TECHNICAL")
   AI_GRADE=$(grade_for "$AI")
 
@@ -505,18 +501,7 @@ for bot_id in $BOTS; do
     --arg accGrade "$ACC_GRADE" \
     --argjson content "$CONTENT" \
     --arg contentGrade "$CONTENT_GRADE" \
-    --argjson structured "$STRUCTURED" \
-    --arg structuredGrade "$STRUCTURED_GRADE" \
-    --arg structuredPageType "$PAGE_TYPE" \
-    --argjson structuredExpected "$EXPECTED_JSON" \
-    --argjson structuredOptional "$OPTIONAL_JSON" \
-    --argjson structuredForbidden "$FORBIDDEN_JSON" \
-    --argjson structuredPresent "$PRESENT_JSON" \
-    --argjson structuredMissing "$MISSING_JSON" \
-    --argjson structuredExtras "$EXTRAS_JSON" \
-    --argjson structuredViolations "$VIOLATIONS_JSON" \
-    --arg structuredCalculation "$CALCULATION" \
-    --arg structuredNotes "$NOTES" \
+    --argjson structured "$STRUCTURED_OBJ" \
     --argjson technical "$TECHNICAL" \
     --arg technicalGrade "$TECHNICAL_GRADE" \
     --argjson ai "$AI" \
@@ -538,24 +523,11 @@ for bot_id in $BOTS; do
         hydrationPenaltyPts: $hydrationPenalty
       },
       categories: {
-        accessibility:     { score: $acc,        grade: $accGrade },
-        contentVisibility: { score: $content,    grade: $contentGrade },
-        structuredData: {
-          score: $structured,
-          grade: $structuredGrade,
-          pageType: $structuredPageType,
-          expected: $structuredExpected,
-          optional: $structuredOptional,
-          forbidden: $structuredForbidden,
-          present: $structuredPresent,
-          missing: $structuredMissing,
-          extras: $structuredExtras,
-          violations: $structuredViolations,
-          calculation: $structuredCalculation,
-          notes: $structuredNotes
-        },
-        technicalSignals:  { score: $technical,  grade: $technicalGrade },
-        aiReadiness:       { score: $ai,         grade: $aiGrade }
+        accessibility:     { score: $acc,       grade: $accGrade },
+        contentVisibility: { score: $content,   grade: $contentGrade },
+        structuredData:    $structured,
+        technicalSignals:  { score: $technical, grade: $technicalGrade },
+        aiReadiness:       { score: $ai,        grade: $aiGrade }
       }
     }')
 
@@ -595,18 +567,13 @@ CAT_TECHNICAL_GRADE=$(grade_for "$CAT_TECHNICAL_AVG")
 CAT_AI_GRADE=$(grade_for "$CAT_AI_AVG")
 
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-if [ -n "$PAGE_TYPE_OVERRIDE" ]; then
-  PAGE_TYPE_OVERRIDDEN_JSON="true"
-else
-  PAGE_TYPE_OVERRIDDEN_JSON="false"
-fi
 
 jq -n \
   --arg url "$TARGET_URL" \
   --arg timestamp "$TIMESTAMP" \
   --arg version "0.2.0" \
   --arg pageType "$PAGE_TYPE" \
-  --argjson pageTypeOverridden "$PAGE_TYPE_OVERRIDDEN_JSON" \
+  --arg pageTypeOverride "$PAGE_TYPE_OVERRIDE" \
   --argjson overallScore "$OVERALL_SCORE" \
   --arg overallGrade "$OVERALL_GRADE" \
   --argjson bots "$BOTS_JSON" \
@@ -625,7 +592,7 @@ jq -n \
     timestamp: $timestamp,
     version: $version,
     pageType: $pageType,
-    pageTypeOverridden: $pageTypeOverridden,
+    pageTypeOverridden: ($pageTypeOverride | length > 0),
     overall: { score: $overallScore, grade: $overallGrade },
     bots: $bots,
     categories: {

@@ -50,8 +50,8 @@ count_words() {
 page_type_for_url() {
   local url="$1"
   local path
-  path=$(printf '%s' "$url" | sed -E 's#^https?://[^/]+##' | sed 's#[?#].*##')
-  if [ -z "$path" ] || [ "$path" = "/" ]; then
+  path=$(path_from_url "$url" | sed 's#[?#].*##')
+  if [ "$path" = "/" ]; then
     echo "root"
     return
   fi
