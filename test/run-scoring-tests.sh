@@ -295,6 +295,64 @@ else
   fail "compute-score.sh exited non-zero on root-minimal"
 fi
 
+# ----- M1: check-llmstxt.sh top-level exists (AC-4) -----
+
+case_begin "AC-4/M1: llmstxt fixture has top-level exists field"
+LLMS_TOP_EXISTS=$(jq -r '.exists // "missing"' "$SCRIPT_DIR/fixtures/root-minimal/llmstxt.json")
+assert_eq "$LLMS_TOP_EXISTS" "true" "top-level exists present and true when llmsTxt.exists is true"
+LLMS_HAS_EXISTS=$(jq 'has("exists")' "$SCRIPT_DIR/fixtures/fetch-failed/llmstxt.json")
+LLMS_TOP_EXISTS_ABSENT=$(jq -r '.exists | tostring' "$SCRIPT_DIR/fixtures/fetch-failed/llmstxt.json")
+assert_eq "$LLMS_HAS_EXISTS" "true" "fetch-failed fixture has exists key"
+assert_eq "$LLMS_TOP_EXISTS_ABSENT" "false" "top-level exists false when neither variant exists"
+
+# ----- M3: extract-links.sh flat schema (AC-6) -----
+
+case_begin "AC-6/M3: links fixture uses flat schema with top-level total"
+LINKS_TOTAL=$(jq -r '.total // "missing"' "$SCRIPT_DIR/fixtures/parity-mismatch/links-googlebot.json")
+assert_eq "$LINKS_TOTAL" "10" "top-level total field present in flat schema"
+
+# ----- M5: consolidated report (AC-8) -----
+
+case_begin "AC-8/M5: build-report.sh merges score + raw data"
+"$COMPUTE_SCORE" "$SCRIPT_DIR/fixtures/root-minimal" > "$SCRIPT_DIR/fixtures/root-minimal/score.json" 2>/dev/null
+if REPORT=$("$REPO_ROOT/skills/crawl-sim/scripts/build-report.sh" "$SCRIPT_DIR/fixtures/root-minimal" 2>/dev/null); then
+  HAS_RAW=$(printf '%s' "$REPORT" | jq 'has("raw")')
+  HAS_PERBOT=$(printf '%s' "$REPORT" | jq '.raw | has("perBot")')
+  HAS_INDEPENDENT=$(printf '%s' "$REPORT" | jq '.raw | has("independent")')
+  SCORE=$(printf '%s' "$REPORT" | jq -r '.overall.score')
+  assert_eq "$HAS_RAW" "true" "report has raw section"
+  assert_eq "$HAS_PERBOT" "true" "report has raw.perBot section"
+  assert_eq "$HAS_INDEPENDENT" "true" "report has raw.independent section"
+  assert_ge "$SCORE" "0" "report preserves overall score"
+else
+  fail "build-report.sh exited non-zero"
+fi
+rm -f "$SCRIPT_DIR/fixtures/root-minimal/score.json"
+
+# ----- R4: critical-fail robots blocking (AC-10) -----
+
+case_begin "AC-10/R4: bot blocked by robots.txt gets auto-F on accessibility"
+if OUT=$(run_score critical-fail-robots 2>/dev/null); then
+  ACC_SCORE=$(printf '%s' "$OUT" | jq -r '.bots.googlebot.categories.accessibility.score')
+  ACC_GRADE=$(printf '%s' "$OUT" | jq -r '.bots.googlebot.categories.accessibility.grade')
+  BOT_SCORE=$(printf '%s' "$OUT" | jq -r '.bots.googlebot.score')
+  assert_eq "$ACC_SCORE" "0" "robots-blocked bot gets 0 on accessibility"
+  assert_eq "$ACC_GRADE" "F" "robots-blocked bot gets F grade"
+  assert_lt "$BOT_SCORE" "80" "composite drops below 80 with accessibility zeroed"
+else
+  fail "compute-score.sh exited non-zero on critical-fail-robots"
+fi
+
+# ----- R2: confidence levels (AC-11) -----
+
+case_begin "AC-11/R2: violations include confidence field"
+if OUT=$(run_score root-overreaching 2>/dev/null); then
+  FIRST_CONFIDENCE=$(printf '%s' "$OUT" | jq -r '.bots.googlebot.categories.structuredData.violations[0].confidence')
+  assert_eq "$FIRST_CONFIDENCE" "high" "violations carry confidence level"
+else
+  fail "compute-score.sh exited non-zero on root-overreaching"
+fi
+
 # ----- Summary -----
 
 printf '\n================================================\n'

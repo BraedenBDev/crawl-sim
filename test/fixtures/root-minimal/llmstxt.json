@@ -8,5 +8,6 @@
   },
   "llmsFullTxt": {
     "exists": false
-  }
+  },
+  "exists": true
 }

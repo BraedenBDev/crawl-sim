@@ -25,6 +25,7 @@ CONTAINS_TARGET=false
 HAS_LASTMOD=false
 IS_INDEX=false
 CHILD_SITEMAP_COUNT=0
+SAMPLE_URLS="[]"
 
 if [ "$HTTP_STATUS" = "200" ] && [ -s "$SITEMAP_FILE" ]; then
   # Check if content looks like XML (not HTML fallback)
@@ -42,6 +43,12 @@ if [ "$HTTP_STATUS" = "200" ] && [ -s "$SITEMAP_FILE" ]; then
 
       # Count <loc> tags (URLs, or child sitemaps in an index)
       URL_COUNT=$(grep -oE '<loc>' "$SITEMAP_FILE" | wc -l | tr -d ' ')
+
+      # Extract first 10 <loc> URLs as sample
+      SAMPLE_URLS=$(grep -oE '<loc>[^<]+</loc>' "$SITEMAP_FILE" \
+        | sed -E 's/<\/?loc>//g' \
+        | head -10 \
+        | jq -R . | jq -s .)
 
       # Check if target URL appears anywhere in the sitemap
       # Match both with and without trailing slash
@@ -67,6 +74,7 @@ jq -n \
   --argjson childSitemapCount "$CHILD_SITEMAP_COUNT" \
   --argjson containsTarget "$CONTAINS_TARGET" \
   --argjson hasLastmod "$HAS_LASTMOD" \
+  --argjson sampleUrls "$SAMPLE_URLS" \
   '{
     url: $url,
     sitemapUrl: $sitemapUrl,
@@ -75,5 +83,6 @@ jq -n \
     urlCount: $urlCount,
     childSitemapCount: $childSitemapCount,
     containsTarget: $containsTarget,
-    hasLastmod: $hasLastmod
+    hasLastmod: $hasLastmod,
+    sampleUrls: $sampleUrls
   }'

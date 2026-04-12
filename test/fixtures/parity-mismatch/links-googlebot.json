@@ -1,1 +1,7 @@
-{"counts":{"total":10,"internal":8,"external":2}}
+{
+  "total": 10,
+  "internal": 8,
+  "external": 2,
+  "internalUrls": [],
+  "externalUrls": []
+}

@@ -79,8 +79,12 @@ LLMS_FULL_HAS_TITLE=$HAS_TITLE
 LLMS_FULL_HAS_DESC=$HAS_DESCRIPTION
 LLMS_FULL_URLS=$URL_COUNT
 
+TOP_EXISTS=false
+[ "$LLMS_EXISTS" = "true" ] || [ "$LLMS_FULL_EXISTS" = "true" ] && TOP_EXISTS=true
+
 jq -n \
   --arg url "$URL" \
+  --argjson topExists "$TOP_EXISTS" \
   --arg llmsUrl "${ORIGIN}/llms.txt" \
   --arg llmsFullUrl "${ORIGIN}/llms-full.txt" \
   --argjson llmsExists "$LLMS_EXISTS" \
@@ -96,6 +100,7 @@ jq -n \
   --argjson llmsFullUrls "$LLMS_FULL_URLS" \
   '{
     url: $url,
+    exists: $topExists,
     llmsTxt: {
       url: $llmsUrl,
       exists: $llmsExists,
