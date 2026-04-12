@@ -18,6 +18,10 @@ set -eu
 # The --page-type flag overrides URL-based page-type detection. Valid values:
 # root, detail, archive, faq, about, contact, generic.
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=_lib.sh
+. "$SCRIPT_DIR/_lib.sh"
+
 PAGE_TYPE_OVERRIDE=""
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -89,32 +93,6 @@ grade_for() {
   elif [ "$s" -ge 60 ]; then echo "D-"
   else echo "F"
   fi
-}
-
-# Detect page type from a URL. Pure-bash, no external deps.
-page_type_for_url() {
-  local url="$1"
-  local path
-  path=$(printf '%s' "$url" | sed -E 's#^https?://[^/]+##' | sed 's#[?#].*##')
-  if [ -z "$path" ] || [ "$path" = "/" ]; then
-    echo "root"
-    return
-  fi
-  local trimmed
-  trimmed=$(printf '%s' "$path" | sed 's#^/##' | sed 's#/$##')
-  local lower
-  lower=$(printf '%s' "$trimmed" | tr '[:upper:]' '[:lower:]')
-  case "$lower" in
-    "") echo "root" ;;
-    work|journal|blog|articles|news|careers|projects|case-studies|cases)
-      echo "archive" ;;
-    work/*|articles/*|journal/*|blog/*|news/*|case-studies/*|cases/*|case/*|careers/*|projects/*)
-      echo "detail" ;;
-    *faq*) echo "faq" ;;
-    *about*|*team*|*purpose*|*who-we-are*) echo "about" ;;
-    *contact*) echo "contact" ;;
-    *) echo "generic" ;;
-  esac
 }
 
 # Rubric: expected schema types per page type.
