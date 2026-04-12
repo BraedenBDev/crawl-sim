@@ -3,6 +3,12 @@
   "validCount": 4,
   "invalidCount": 0,
   "types": ["Organization", "WebSite", "Article", "FAQPage"],
+  "blocks": [
+    { "type": "Organization", "fields": ["@context", "@type", "name", "url"] },
+    { "type": "WebSite", "fields": ["@context", "@type", "name", "url"] },
+    { "type": "Article", "fields": ["@context", "@type", "headline", "author", "datePublished"] },
+    { "type": "FAQPage", "fields": ["@context", "@type", "mainEntity"] }
+  ],
   "flags": {
     "hasOrganization": true,
     "hasBreadcrumbList": false,

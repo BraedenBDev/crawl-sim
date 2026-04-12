@@ -443,7 +443,7 @@ for bot_id in $BOTS; do
     "$PRESENT_EXPECTED_COUNT" "$EXPECTED_COUNT" "$BASE" \
     "$BONUS" "$FORBID_PENALTY" "$VALID_PENALTY" "$FIELD_PENALTY" "$STRUCTURED")
 
-  if [ "$STRUCTURED" -ge 100 ] && [ -z "$PRESENT_FORBIDDEN" ] && [ "$VALID_PENALTY" -eq 0 ]; then
+  if [ "$STRUCTURED" -ge 100 ] && [ -z "$PRESENT_FORBIDDEN" ] && [ "$VALID_PENALTY" -eq 0 ] && [ "$FIELD_PENALTY" -eq 0 ]; then
     NOTES="All expected schemas for pageType=$PAGE_TYPE are present. No structured-data action needed."
   elif [ -n "$MISSING_EXPECTED" ] && [ -z "$PRESENT_FORBIDDEN" ]; then
     NOTES="Missing expected schemas for pageType=$PAGE_TYPE: $MISSING_EXPECTED. Add these to raise the score."
@@ -451,8 +451,12 @@ for bot_id in $BOTS; do
     NOTES="Forbidden schemas present for pageType=$PAGE_TYPE: $PRESENT_FORBIDDEN. Remove these (or re-classify the page type with --page-type)."
   elif [ -n "$PRESENT_FORBIDDEN" ] && [ -n "$MISSING_EXPECTED" ]; then
     NOTES="Mixed: missing $MISSING_EXPECTED and forbidden present $PRESENT_FORBIDDEN for pageType=$PAGE_TYPE."
-  else
+  elif [ "$FIELD_PENALTY" -gt 0 ]; then
+    NOTES="Schemas for pageType=$PAGE_TYPE are present but missing required fields. See violations for details."
+  elif [ "$VALID_PENALTY" -gt 0 ]; then
     NOTES="Score reduced by $VALID_PENALTY pts due to invalid JSON-LD blocks."
+  else
+    NOTES="Structured data scored for pageType=$PAGE_TYPE."
   fi
 
   STRUCTURED_GRADE=$(grade_for "$STRUCTURED")

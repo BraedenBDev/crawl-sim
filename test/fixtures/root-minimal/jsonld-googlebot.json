@@ -3,6 +3,10 @@
   "validCount": 2,
   "invalidCount": 0,
   "types": ["Organization", "WebSite"],
+  "blocks": [
+    { "type": "Organization", "fields": ["@context", "@type", "name", "url"] },
+    { "type": "WebSite", "fields": ["@context", "@type", "name", "url"] }
+  ],
   "flags": {
     "hasOrganization": true,
     "hasBreadcrumbList": false,
