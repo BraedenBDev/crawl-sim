@@ -1,0 +1,15 @@
+{
+  "blockCount": 4,
+  "validCount": 4,
+  "invalidCount": 0,
+  "types": ["Organization", "WebSite", "Article", "FAQPage"],
+  "flags": {
+    "hasOrganization": true,
+    "hasBreadcrumbList": false,
+    "hasWebSite": true,
+    "hasArticle": true,
+    "hasFAQPage": true,
+    "hasProduct": false,
+    "hasProfessionalService": false
+  }
+}
