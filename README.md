@@ -1,29 +1,19 @@
 # crawl-sim
 
-**See your site through the eyes of Googlebot, GPTBot, ClaudeBot, and PerplexityBot.**
+**Your site ranks #1 on Google but doesn't exist in ChatGPT search results. Here's why.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 [![npm version](https://img.shields.io/npm/v/@braedenbuilds/crawl-sim.svg)](https://www.npmjs.com/package/@braedenbuilds/crawl-sim)
 [![Built for Claude Code](https://img.shields.io/badge/built%20for-Claude%20Code-D97757.svg)](https://claude.com/claude-code)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
 
-`crawl-sim` is the first open-source, **agent-native multi-bot web crawler simulator**. It audits a URL from the perspective of each major crawler — Google's search bot, OpenAI's GPTBot, Anthropic's ClaudeBot, Perplexity's crawler, and more — then produces a quantified score card, prioritized findings, and structured JSON output.
+The web now has two audiences: browsers and bots. Google renders your JavaScript and sees everything. GPTBot, ClaudeBot, and PerplexityBot don't — they read your server HTML and move on. If your content lives behind client-side hydration, AI search engines cite your competitors instead of you. Meanwhile, Cloudflare has been blocking AI training crawlers by default on 20% of the web since July 2025, and ChatGPT-User and Perplexity-User ignore robots.txt entirely for user-initiated fetches — so your carefully crafted blocking rules may not be doing what you think. The gap between what Google sees and what AI sees is the new SEO blind spot, and most tools don't even know it exists.
 
-It ships as a [Claude Code plugin](https://docs.claude.com/en/docs/claude-code/plugins) backed by standalone shell scripts, so the intelligence lives in the agent and the plumbing stays debuggable.
+`crawl-sim` was built from a real bug: an `ssr: false` flag on a dynamic import was silently hiding article cards from every AI crawler on a production site. Screaming Frog didn't catch it — it's built around Googlebot's headless Chrome. The fix took two minutes once we could see the problem. The problem took weeks to find because nothing was looking.
 
----
+This is for web developers checking their own sites, agencies auditing clients who need quantified proof of the visibility gap, and SEO teams adding GEO (Generative Engine Optimization) to their toolkit. Before crawl-sim, you'd curl as GPTBot and eyeball the HTML. Now you get a scored, regression-tested audit across nine bot profiles that tells you exactly what each crawler sees, what it misses, whether your robots.txt blocks actually work, and what to fix first.
 
-## Why this exists
-
-The crawler-simulation market has a gap. Most tools pick one lane:
-
-| Category | Examples | What they miss |
-|----------|----------|----------------|
-| **Rendering tools** | Screaming Frog, TametheBot | Googlebot only — no AI crawlers |
-| **Monitoring SaaS** | Otterly, ZipTie, Peec | Track citations but don't simulate crawls |
-| **Frameworks** | Crawlee, Playwright | Raw building blocks with no bot intelligence |
-
-No existing tool combines **multi-bot simulation + LLM-powered interpretation + quantified scoring** in an agent-native format. `crawl-sim` does.
+It ships as a [Claude Code plugin](https://docs.claude.com/en/docs/claude-code/plugins) backed by standalone shell scripts — the intelligence lives in the agent, the plumbing stays debuggable.
 
 ---
 
