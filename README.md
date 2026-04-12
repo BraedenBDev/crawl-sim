@@ -27,6 +27,29 @@ No existing tool combines **multi-bot simulation + LLM-powered interpretation + 
 
 ---
 
+## Why a plugin instead of prompting Claude directly?
+
+Claude Code has Bash, curl, and jq. It *could* write all of this from scratch every time you ask. But that's the wrong comparison. Here's what actually happens:
+
+| | Without crawl-sim | With crawl-sim |
+|---|---|---|
+| **User prompt** | ~500 tokens explaining what you want | `/crawl-sim https://site.com` — 20 tokens |
+| **Bot UA strings** | Claude guesses or hallucinates them | 9 verified profiles with researched data |
+| **Scoring logic** | Claude invents it mid-conversation (~3,000 tokens) | `compute-score.sh` runs in bash — 0 tokens |
+| **Edge case handling** | Claude debugs live (~2,000 tokens) | 70 regression tests already caught those bugs |
+| **robots.txt analysis** | Generic "blocked/not blocked" | Enforceability context — is the block actually enforceable? |
+| **Total output tokens** | ~10,000+ per audit | ~2,500 per audit |
+
+The scripts do the heavy lifting in bash, not in your context window. Scoring, extraction, field validation, parity computation — all zero tokens. Claude only spends tokens on interpretation.
+
+**What this means in practice:**
+- **Consistent.** Same rubric every run, not dependent on how Claude feels today. Page-type-aware schema scoring, cross-bot parity, critical-fail criteria — all tested.
+- **Accurate.** Bot profiles include Cloudflare tier classification, robots.txt enforceability, and documented bypass behavior. You'd have to research this yourself otherwise.
+- **Fast.** One command replaces 30 minutes of ad-hoc scripting and guesswork.
+- **Debuggable.** Every script is standalone, outputs JSON, and can be run independently. When something looks wrong, you inspect the intermediate files — not a wall of LLM output.
+
+---
+
 ## Table of contents
 
 - [Quick start](#quick-start)
