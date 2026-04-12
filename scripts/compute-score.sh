@@ -21,6 +21,8 @@ set -eu
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=_lib.sh
 . "$SCRIPT_DIR/_lib.sh"
+# shellcheck source=schema-fields.sh
+. "$SCRIPT_DIR/schema-fields.sh"
 
 PAGE_TYPE_OVERRIDE=""
 while [ $# -gt 0 ]; do
@@ -410,13 +412,36 @@ for bot_id in $BOTS; do
     [ $VALID_PENALTY -gt 20 ] && VALID_PENALTY=20
   fi
 
-  STRUCTURED=$((BASE + BONUS - FORBID_PENALTY - VALID_PENALTY))
+  # Field-level validation (C3): check required fields per schema type
+  FIELD_PENALTY=0
+  FIELD_VIOLATIONS_JSON="[]"
+  if [ -f "$JSONLD" ] && jq -e '.blocks' "$JSONLD" >/dev/null 2>&1; then
+    BLOCK_COUNT_FOR_FIELDS=$(jq '.blocks | length' "$JSONLD" 2>/dev/null || echo "0")
+    i=0
+    while [ "$i" -lt "$BLOCK_COUNT_FOR_FIELDS" ]; do
+      BLOCK_TYPE=$(jq -r ".blocks[$i].type" "$JSONLD" 2>/dev/null || echo "")
+      BLOCK_FIELDS=$(jq -r ".blocks[$i].fields[]?" "$JSONLD" 2>/dev/null | tr '\n' ' ')
+      REQUIRED=$(required_fields_for "$BLOCK_TYPE")
+      for field in $REQUIRED; do
+        if ! printf ' %s ' "$BLOCK_FIELDS" | grep -q " $field "; then
+          FIELD_VIOLATIONS_JSON=$(printf '%s' "$FIELD_VIOLATIONS_JSON" | jq \
+            --arg schema "$BLOCK_TYPE" --arg field "$field" \
+            '. + [{kind: "missing_required_field", schema: $schema, field: $field, impact: -5}]')
+          FIELD_PENALTY=$((FIELD_PENALTY + 5))
+        fi
+      done
+      i=$((i + 1))
+    done
+  fi
+  [ $FIELD_PENALTY -gt 30 ] && FIELD_PENALTY=30
+
+  STRUCTURED=$((BASE + BONUS - FORBID_PENALTY - VALID_PENALTY - FIELD_PENALTY))
   [ $STRUCTURED -gt 100 ] && STRUCTURED=100
   [ $STRUCTURED -lt 0 ] && STRUCTURED=0
 
-  CALCULATION=$(printf 'base: %d/%d expected present = %d; +%d optional bonus; -%d forbidden penalty; -%d validity penalty; clamp [0,100] = %d' \
+  CALCULATION=$(printf 'base: %d/%d expected present = %d; +%d optional bonus; -%d forbidden penalty; -%d validity penalty; -%d field penalty; clamp [0,100] = %d' \
     "$PRESENT_EXPECTED_COUNT" "$EXPECTED_COUNT" "$BASE" \
-    "$BONUS" "$FORBID_PENALTY" "$VALID_PENALTY" "$STRUCTURED")
+    "$BONUS" "$FORBID_PENALTY" "$VALID_PENALTY" "$FIELD_PENALTY" "$STRUCTURED")
 
   if [ "$STRUCTURED" -ge 100 ] && [ -z "$PRESENT_FORBIDDEN" ] && [ "$VALID_PENALTY" -eq 0 ]; then
     NOTES="All expected schemas for pageType=$PAGE_TYPE are present. No structured-data action needed."
@@ -444,6 +469,7 @@ for bot_id in $BOTS; do
     --arg forbiddenPresent "$PRESENT_FORBIDDEN" \
     --argjson invalidCount "$JSONLD_INVALID" \
     --argjson validPenalty "$VALID_PENALTY" \
+    --argjson fieldViolations "$FIELD_VIOLATIONS_JSON" \
     --arg calculation "$CALCULATION" \
     --arg notes "$NOTES" \
     '
@@ -464,6 +490,7 @@ for bot_id in $BOTS; do
              then [{kind: "invalid_jsonld", count: $invalidCount, impact: (0 - $validPenalty)}]
              else []
            end)
+        + $fieldViolations
       ),
       calculation: $calculation,
       notes: $notes
