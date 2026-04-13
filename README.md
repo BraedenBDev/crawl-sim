@@ -35,10 +35,11 @@ Or standalone:
 
 ```bash
 git clone https://github.com/BraedenBDev/crawl-sim.git
-./crawl-sim/scripts/fetch-as-bot.sh https://yoursite.com profiles/gptbot.json | jq .
+cd crawl-sim
+./scripts/fetch-as-bot.sh https://yoursite.com profiles/gptbot.json | jq '{status, wordCount, timing}'
 ```
 
-Requires `curl` + `jq`. Optional: `playwright` (JS render comparison), Chrome (PDF reports).
+Requires `curl` + `jq`. The installer will offer to set up Playwright for you, or install it manually with `npx playwright install chromium`. Without it, crawl-sim still runs but all bots score the same on content visibility because there's no JS render comparison. With Playwright, Googlebot gets scored on the full rendered page while AI bots get scored on server HTML only, which is where the interesting findings come from.
 
 ---
 
