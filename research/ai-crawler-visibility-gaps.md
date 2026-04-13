@@ -1,4 +1,4 @@
-# AI Crawler Visibility Gaps — Why Sites Disappear from AI Search
+# AI Crawler Visibility Gaps
 
 Research compiled 2026-04-13. Documents the known causes of content being visible to Googlebot but invisible to AI crawlers (GPTBot, ClaudeBot, PerplexityBot). Each category includes the mechanism, why it's hard to catch, and which crawl-sim check surfaces it.
 
@@ -12,7 +12,7 @@ Cloudflare classifies crawlers into three tiers: verified search engines (Google
 
 A site behind Cloudflare serves full HTML to Googlebot (tier 1, whitelisted) but returns a challenge page or 403 to GPTBot and ClaudeBot (tier 2, blocked by default). The site owner sees normal behavior in their browser. Every SEO tool reports green because they check the Google view.
 
-**Why it's hard to catch:** No error appears in server logs (Cloudflare intercepts before the request reaches origin). The site owner never opted into blocking — it's the default. Browser-based testing never reveals it because browsers aren't classified as bots.
+**Why it's hard to catch:** No error appears in server logs (Cloudflare intercepts before the request reaches origin). The site owner never opted into blocking. It's the default. Browser-based testing never reveals it because browsers aren't classified as bots.
 
 **crawl-sim detection:** `fetch-as-bot.sh` fetches with each bot's verified UA string. A 403 or challenge page for AI bots while Googlebot returns 200 is the signal. Cross-bot parity scoring flags the content delta.
 
@@ -35,11 +35,11 @@ Edge-computed content (Cloudflare Workers, Vercel Edge Middleware, AWS CloudFron
 
 ### Suspense Boundaries and Streaming SSR Fallbacks
 
-React's `<Suspense>` with streaming SSR sends the fallback content immediately and streams the resolved content as it becomes available. Googlebot's Web Rendering Service (WRS) executes JavaScript and waits for hydration. AI crawlers that read only the initial server HTML see the fallback — loading skeletons, spinners, or empty containers — not the actual content.
+React's `<Suspense>` with streaming SSR sends the fallback content immediately and streams the resolved content as it becomes available. Googlebot's Web Rendering Service (WRS) executes JavaScript and waits for hydration. AI crawlers that read only the initial server HTML see the fallback: loading skeletons, spinners, or empty containers.
 
 This is the **recommended pattern** in React 18+, Next.js App Router, and Remix. Developers using the framework correctly produce content that is invisible to non-rendering crawlers.
 
-**Why it's hard to catch:** The page renders correctly in every browser. Googlebot indexes the full content. Lighthouse shows no issues. The fallback HTML is valid markup — it just has no meaningful content. View Source shows the shell, but developers rarely check that against what bots actually receive.
+**Why it's hard to catch:** The page renders correctly in every browser. Googlebot indexes the full content. Lighthouse shows no issues. The fallback HTML is valid markup with no meaningful content. View Source shows the shell, but developers rarely check that against what bots actually receive.
 
 **crawl-sim detection:** Word count and heading comparison across bots. `diff-render.sh` compares server HTML (what AI bots see) against JS-rendered DOM (what Googlebot sees). A 10x word-count gap is the flagship finding.
 
@@ -56,15 +56,15 @@ This is the **recommended pattern** in React 18+, Next.js App Router, and Remix.
 
 These are all **documented, recommended patterns** for code-splitting and performance optimization. The framework docs encourage their use. None of the framework docs warn about AI crawler implications.
 
-**Why it's hard to catch:** The developer followed the documentation. The page works perfectly in production. Performance scores are good specifically because these patterns reduce initial bundle size. The side effect — AI crawler invisibility — is undocumented.
+**Why it's hard to catch:** The developer followed the documentation. The page works perfectly in production. Performance scores are good specifically because these patterns reduce initial bundle size. The side effect (AI crawler invisibility) is undocumented.
 
 **crawl-sim detection:** Cross-bot content parity. Server HTML word count vs JS-rendered word count surfaces the delta regardless of which framework pattern caused it.
 
 ### Intersection Observer and Lazy Loading
 
-Content below the fold loads via `IntersectionObserver` — images, embedded components, infinite scroll sections. Googlebot's WRS scrolls the virtual viewport and triggers intersection callbacks. AI crawlers fetch HTML and get empty placeholders with `data-src` attributes but no actual content.
+Content below the fold loads via `IntersectionObserver`: images, embedded components, infinite scroll sections. Googlebot's WRS scrolls the virtual viewport and triggers intersection callbacks. AI crawlers fetch HTML and get empty placeholders with `data-src` attributes but no actual content.
 
-Native lazy loading (`loading="lazy"` on images) is specifically handled by Googlebot's renderer but invisible to HTML-only crawlers — the `src` may be a placeholder or blank.
+Native lazy loading (`loading="lazy"` on images) is specifically handled by Googlebot's renderer but invisible to HTML-only crawlers. The `src` may be a placeholder or blank.
 
 **Why it's hard to catch:** Lazy loading is a Core Web Vitals best practice. Google explicitly recommends it. The interaction between lazy loading and non-rendering crawlers is not documented by any framework or by Google's own guidance.
 
@@ -92,7 +92,7 @@ Content loaded via iframes (embedded videos, third-party widgets, but also prima
 
 ### Client-Side Data Fetching (SPA Patterns)
 
-Single-page applications that fetch content via API calls after `DOMContentLoaded` — the traditional SPA model — serve an empty shell to non-rendering crawlers. Googlebot's WRS executes the JavaScript, waits for API responses, and indexes the rendered content. AI crawlers see the shell.
+Single-page applications fetch content via API calls after `DOMContentLoaded` and serve an empty shell to non-rendering crawlers. Googlebot's WRS executes the JavaScript, waits for API responses, and indexes the rendered content. AI crawlers see the shell.
 
 This is becoming less common as frameworks move to SSR/SSG, but legacy SPAs, dashboard-style apps with public pages, and hybrid architectures still rely on it.
 
@@ -108,7 +108,7 @@ This is becoming less common as frameworks move to SSR/SSG, but legacy SPAs, das
 
 A robots.txt that allows GPTBot access to pages but blocks the `/static/` or `/assets/` directory prevents the bot from loading CSS and JavaScript resources needed for any rendering attempt. Googlebot may still render from cached resources or degrade gracefully. AI crawlers that attempt any resource loading get broken pages.
 
-**Why it's hard to catch:** The robots.txt looks correct — the bot is allowed. Testing the page URL works. The resource blocking is a separate rule that isn't surfaced by page-level access checks.
+**Why it's hard to catch:** The robots.txt looks correct. The bot is allowed. Testing the page URL works. The resource blocking is a separate rule that isn't surfaced by page-level access checks.
 
 **crawl-sim detection:** `check-robots.sh` tests both the page URL and common resource paths against each bot's UA token.
 
@@ -126,7 +126,7 @@ PerplexityBot claims robots.txt compliance, but Cloudflare and independent resea
 
 **Why it's hard to catch:** The declared bot respects the block. The undeclared bot uses a generic or browser-like UA string. Server logs show the access but it's indistinguishable from normal traffic without IP correlation.
 
-**crawl-sim detection:** PerplexityBot profile carries `stealth_risk` enforceability classification. Narrative output explains the limitation — blocking in robots.txt is necessary but may not be sufficient.
+**crawl-sim detection:** PerplexityBot profile carries `stealth_risk` enforceability classification. Narrative output explains the limitation: blocking in robots.txt is necessary but may not be sufficient.
 
 **Sources:**
 - Cloudflare blog on Perplexity crawling behavior
@@ -135,16 +135,16 @@ PerplexityBot claims robots.txt compliance, but Cloudflare and independent resea
 
 ---
 
-## Summary: The Visibility Gap Is Systemic
+## Summary
 
-The gap between what Googlebot sees and what AI crawlers see is not primarily caused by developer mistakes. It's a structural consequence of:
+Four forces create the gap:
 
-1. **Google invested in rendering; AI vendors didn't.** Googlebot runs a full headless Chrome. AI crawlers read server HTML. Every JavaScript-dependent content pattern works for Google and fails for AI bots.
+1. **Google renders JavaScript. AI vendors don't.** Googlebot runs full headless Chrome. AI crawlers read server HTML. JavaScript-dependent content works for Google and fails for AI bots.
 
-2. **Infrastructure treats bots differently by default.** Cloudflare, CDNs, and WAFs whitelist Googlebot and block or challenge AI crawlers without the site owner's knowledge or action.
+2. **Infrastructure filters bots by tier.** Cloudflare, CDNs, and WAFs whitelist Googlebot and block or challenge AI crawlers. Site owners don't opt in and don't get notified.
 
-3. **Framework best practices create the gap.** Code splitting, lazy loading, Suspense boundaries, and client components are recommended patterns that happen to produce content invisible to non-rendering crawlers.
+3. **Framework best practices produce invisible content.** Code splitting, lazy loading, Suspense boundaries, and client components are recommended patterns. They also produce content that non-rendering crawlers can't see.
 
-4. **robots.txt enforcement is not uniform.** Some bots enforce, some advise, some bypass. A single robots.txt cannot express the nuance needed, and no standard tool audits enforceability per bot.
+4. **robots.txt enforcement varies by bot.** Some bots enforce, some treat it as advisory, some bypass it. No standard tool audits enforceability per bot.
 
-The common thread: every existing tool audits the Google view. The AI crawler view is a different thing entirely, and until you fetch as each bot and compare, the gap is invisible.
+Existing tools audit the Google view. The AI crawler view requires fetching as each bot and comparing.

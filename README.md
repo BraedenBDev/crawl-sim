@@ -9,7 +9,7 @@
 
 Google renders your JavaScript. GPTBot, ClaudeBot, and PerplexityBot don't. They read server HTML and move on. If your content lives behind client-side hydration, AI search engines cite your competitors instead of you. Cloudflare blocks AI training crawlers by default on 20% of the web. ChatGPT-User and Perplexity-User ignore robots.txt for user-initiated fetches. Your blocking rules may not be doing what you think.
 
-`crawl-sim` started when a production site turned out to be invisible to every AI search engine despite ranking well on Google. The cause wasn't a bug in the code. Cloudflare was blocking AI training crawlers by default — serving full HTML to Googlebot (whitelisted) and challenge pages to GPTBot and ClaudeBot (blocked). No error in server logs, no opt-in, no indication anything was wrong. Every SEO tool said green because they only check the Google view. The gap was invisible until we fetched as each bot and compared.
+`crawl-sim` started when a production site turned out to be invisible to every AI search engine despite ranking well on Google. The cause wasn't a bug in the code. Cloudflare was blocking AI training crawlers by default. Googlebot got full HTML. GPTBot and ClaudeBot got challenge pages. No error in server logs, no opt-in, no indication anything was wrong. SEO tools said green because they only check the Google view. The gap was invisible until we fetched as each bot and compared.
 
 This is for developers checking their own sites, agencies who need to show clients the gap with numbers, and SEO teams adding GEO to their toolkit.
 
