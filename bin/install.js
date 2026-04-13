@@ -11,6 +11,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const readline = require('readline');
 const { execFileSync } = require('child_process');
 
 const SOURCE_DIR = path.resolve(__dirname, '..');
@@ -136,9 +137,9 @@ function install(target) {
   try {
     execFileSync('npx', ['playwright', '--version'], { stdio: 'ignore' });
     hasPlaywright = true;
+    console.log('  ✓ playwright');
   } catch {
-    console.warn(`  ! playwright not found — optional, needed only for diff-render.sh`);
-    console.warn(`    install with: npx playwright install chromium`);
+    // handled below with interactive prompt
   }
 
   if (!hasCurl || !hasJq) {
@@ -146,6 +147,39 @@ function install(target) {
     process.exit(1);
   }
 
+  if (!hasPlaywright) {
+    return promptPlaywright(target);
+  }
+
+  printSuccess(target);
+}
+
+function promptPlaywright(target) {
+  console.log('\n  Playwright is not installed.');
+  console.log('  It\'s optional but recommended. It enables JS render comparison,');
+  console.log('  which is how crawl-sim differentiates Googlebot from AI crawlers.');
+  console.log('  Without it, all bots score the same on content visibility.\n');
+
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  rl.question('  Install Playwright + Chromium now? (y/N) ', (answer) => {
+    rl.close();
+    if (answer.trim().toLowerCase() === 'y') {
+      console.log('\n  Installing Playwright and Chromium (this may take a minute)...\n');
+      try {
+        execFileSync('npx', ['playwright', 'install', 'chromium'], { stdio: 'inherit' });
+        console.log('\n  ✓ Playwright + Chromium installed');
+      } catch {
+        console.warn('\n  ! Playwright installation failed. You can retry later with:');
+        console.warn('    npx playwright install chromium');
+      }
+    } else {
+      console.log('\n  Skipped. You can install later with: npx playwright install chromium');
+    }
+    printSuccess(target);
+  });
+}
+
+function printSuccess(target) {
   console.log(`\n✓ crawl-sim installed to: ${target}`);
   console.log('\nUsage:');
   console.log('  In Claude Code: /crawl-sim https://yoursite.com');
