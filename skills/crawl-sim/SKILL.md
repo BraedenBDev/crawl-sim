@@ -41,12 +41,23 @@ Keep status lines short, active, and specific to this URL. Never use the same se
 ```bash
 command -v curl >/dev/null 2>&1 || { echo "ERROR: curl is required"; exit 1; }
 command -v jq   >/dev/null 2>&1 || { echo "ERROR: jq is required (brew install jq)"; exit 1; }
+# Playwright is optional but enables JS render comparison (Stage 4)
+HAS_PLAYWRIGHT=false
+if command -v npx >/dev/null 2>&1 && npx playwright --version >/dev/null 2>&1; then
+  HAS_PLAYWRIGHT=true
+fi
 ```
 
 Locate the skill directory. Check in this order:
 1. `$CLAUDE_PLUGIN_ROOT/skills/crawl-sim` (plugin install)
 2. `~/.claude/skills/crawl-sim/` (global npm install)
 3. `.claude/skills/crawl-sim/` (project-level install)
+
+## Shell compatibility
+
+These scripts run under both bash and zsh. Avoid these zsh pitfalls:
+- `status` is a **read-only variable** in zsh. Use `http_code`, `http_status`, or `exit_code` instead.
+- Always redirect script stderr with `2>/dev/null` when capturing JSON output. Scripts emit `[script-name] ...` progress lines to stderr that will corrupt JSON if mixed into stdout.
 
 ## Orchestration — five narrated stages
 
@@ -70,20 +81,25 @@ fi
 RUN_DIR=$(mktemp -d -t crawl-sim.XXXXXX)
 URL="<user-provided-url>"
 for bot in googlebot gptbot claudebot perplexitybot; do
-  "$SKILL_DIR/scripts/fetch-as-bot.sh" "$URL" "$SKILL_DIR/profiles/${bot}.json" > "$RUN_DIR/fetch-${bot}.json" &
+  "$SKILL_DIR/scripts/fetch-as-bot.sh" "$URL" "$SKILL_DIR/profiles/${bot}.json" > "$RUN_DIR/fetch-${bot}.json" 2>/dev/null &
 done
 wait
 
 # Verify no empty fetch files (guard against silent parallel failures)
 for bot in googlebot gptbot claudebot perplexitybot; do
   if [ ! -s "$RUN_DIR/fetch-${bot}.json" ]; then
-    echo "WARNING: fetch-${bot}.json is empty — retrying serially" >&2
-    "$SKILL_DIR/scripts/fetch-as-bot.sh" "$URL" "$SKILL_DIR/profiles/${bot}.json" > "$RUN_DIR/fetch-${bot}.json"
+    echo "WARNING: fetch-${bot}.json is empty, retrying serially" >&2
+    "$SKILL_DIR/scripts/fetch-as-bot.sh" "$URL" "$SKILL_DIR/profiles/${bot}.json" > "$RUN_DIR/fetch-${bot}.json" 2>/dev/null
   fi
 done
-```
 
-Each fetch emits a `[fetch-as-bot] BotName <- URL` line to stderr that surfaces in the Bash call's output.
+# Verify fetches — use exact field paths from output-schemas.md
+for bot in googlebot gptbot claudebot perplexitybot; do
+  http_code=$(jq -r '.status' "$RUN_DIR/fetch-${bot}.json")
+  words=$(jq -r '.wordCount' "$RUN_DIR/fetch-${bot}.json")
+  echo "$bot: HTTP $http_code | $words words"
+done
+```
 
 If `--bot <id>` was passed, use only that bot. Also optionally include the secondary profiles (`oai-searchbot`, `chatgpt-user`, `claude-user`, `claude-searchbot`, `perplexity-user`) when the user passes `--all`.
 
@@ -94,10 +110,19 @@ Tell the user: "Extracting meta, JSON-LD, and links from each bot's view..."
 ```bash
 for bot in googlebot gptbot claudebot perplexitybot; do
   jq -r '.bodyBase64' "$RUN_DIR/fetch-${bot}.json" | base64 -d > "$RUN_DIR/body-${bot}.html"
-  "$SKILL_DIR/scripts/extract-meta.sh"   "$RUN_DIR/body-${bot}.html" > "$RUN_DIR/meta-${bot}.json"
-  "$SKILL_DIR/scripts/extract-jsonld.sh" "$RUN_DIR/body-${bot}.html" > "$RUN_DIR/jsonld-${bot}.json"
-  "$SKILL_DIR/scripts/extract-links.sh" "$URL" "$RUN_DIR/body-${bot}.html" > "$RUN_DIR/links-${bot}.json"
+  "$SKILL_DIR/scripts/extract-meta.sh"   "$RUN_DIR/body-${bot}.html" > "$RUN_DIR/meta-${bot}.json" 2>/dev/null
+  "$SKILL_DIR/scripts/extract-jsonld.sh" "$RUN_DIR/body-${bot}.html" > "$RUN_DIR/jsonld-${bot}.json" 2>/dev/null
+  "$SKILL_DIR/scripts/extract-links.sh"  "$URL" "$RUN_DIR/body-${bot}.html" > "$RUN_DIR/links-${bot}.json" 2>/dev/null
 done
+
+# Verify extractions — exact field paths from output-schemas.md
+# extract-meta.sh: .title, .description, .canonical, .headings.h1.count, .headings.h2.count, .images.total, .images.withAlt, .og.title, .og.description, .og.image
+# extract-jsonld.sh: .blockCount, .types[], .blocks[].type, .flags.hasOrganization, .flags.hasWebSite
+# extract-links.sh: .total, .internal, .external
+bot="googlebot"
+echo "Meta:   title=$(jq -r '.title' "$RUN_DIR/meta-${bot}.json") h1=$(jq -r '.headings.h1.count' "$RUN_DIR/meta-${bot}.json") h2=$(jq -r '.headings.h2.count' "$RUN_DIR/meta-${bot}.json")"
+echo "JSONLD: blocks=$(jq -r '.blockCount' "$RUN_DIR/jsonld-${bot}.json") types=$(jq -r '.types | join(", ")' "$RUN_DIR/jsonld-${bot}.json")"
+echo "Links:  internal=$(jq -r '.internal' "$RUN_DIR/links-${bot}.json") external=$(jq -r '.external' "$RUN_DIR/links-${bot}.json")"
 ```
 
 ### Stage 3 — Crawler policy checks
@@ -107,10 +132,20 @@ Tell the user: "Checking robots.txt for each bot's UA token, plus llms.txt and s
 ```bash
 for bot in googlebot gptbot claudebot perplexitybot; do
   token=$(jq -r '.robotsTxtToken' "$SKILL_DIR/profiles/${bot}.json")
-  "$SKILL_DIR/scripts/check-robots.sh" "$URL" "$token" > "$RUN_DIR/robots-${bot}.json"
+  "$SKILL_DIR/scripts/check-robots.sh" "$URL" "$token" > "$RUN_DIR/robots-${bot}.json" 2>/dev/null
 done
-"$SKILL_DIR/scripts/check-llmstxt.sh" "$URL" > "$RUN_DIR/llmstxt.json"
-"$SKILL_DIR/scripts/check-sitemap.sh" "$URL" > "$RUN_DIR/sitemap.json"
+"$SKILL_DIR/scripts/check-llmstxt.sh" "$URL" > "$RUN_DIR/llmstxt.json" 2>/dev/null
+"$SKILL_DIR/scripts/check-sitemap.sh" "$URL" > "$RUN_DIR/sitemap.json" 2>/dev/null
+
+# Verify — exact field paths from output-schemas.md
+# check-robots.sh: .allowed, .exists
+# check-llmstxt.sh: .exists, .llmsTxt.exists, .llmsFullTxt.exists
+# check-sitemap.sh: .exists, .urlCount, .containsTarget
+for bot in googlebot gptbot claudebot perplexitybot; do
+  echo "$bot: allowed=$(jq -r '.allowed' "$RUN_DIR/robots-${bot}.json")"
+done
+echo "llms.txt: $(jq -r '.exists' "$RUN_DIR/llmstxt.json")"
+echo "sitemap: exists=$(jq -r '.exists' "$RUN_DIR/sitemap.json") urls=$(jq -r '.urlCount' "$RUN_DIR/sitemap.json")"
 ```
 
 ### Stage 4 — Render comparison (this is the differentiator)
@@ -119,12 +154,16 @@ Tell the user something like: "Comparing server HTML vs Playwright-rendered DOM 
 
 ```bash
 if [ -x "$SKILL_DIR/scripts/diff-render.sh" ]; then
-  "$SKILL_DIR/scripts/diff-render.sh" "$URL" > "$RUN_DIR/diff-render.json" \
+  "$SKILL_DIR/scripts/diff-render.sh" "$URL" > "$RUN_DIR/diff-render.json" 2>/dev/null \
     || echo '{"skipped":true,"reason":"diff-render failed"}' > "$RUN_DIR/diff-render.json"
+else
+  echo '{"skipped":true,"reason":"diff-render.sh not found"}' > "$RUN_DIR/diff-render.json"
 fi
-```
 
-Never redirect `diff-render.sh` stderr into the output file — the narration line would corrupt the JSON.
+# Verify — exact field paths from output-schemas.md
+# diff-render.sh: .skipped, .serverWordCount, .renderedWordCount, .deltaPct, .deltaWords
+echo "Render: server=$(jq -r '.serverWordCount // "skipped"' "$RUN_DIR/diff-render.json") rendered=$(jq -r '.renderedWordCount // "skipped"' "$RUN_DIR/diff-render.json") delta=$(jq -r '.deltaPct // "n/a"' "$RUN_DIR/diff-render.json")%"
+```
 
 **Why this stage matters:** the score depends on it. `compute-score.sh` uses the rendered word count for bots with `rendersJavaScript: true` (Googlebot) and applies a hydration penalty to bots with `rendersJavaScript: false` (GPTBot, ClaudeBot, PerplexityBot) proportional to how much content is invisible to them. On a site with significant client-side hydration, this is where the bot scores actually diverge. Without this stage, all non-blocked bots would score identically.
 
@@ -135,8 +174,19 @@ If Playwright isn't installed, `diff-render.sh` writes `{"skipped": true, "reaso
 Tell the user: "Computing per-bot scores and finalizing the report..."
 
 ```bash
-"$SKILL_DIR/scripts/compute-score.sh" "$RUN_DIR" > "$RUN_DIR/score.json"
-"$SKILL_DIR/scripts/build-report.sh" "$RUN_DIR" > ./crawl-sim-report.json
+"$SKILL_DIR/scripts/compute-score.sh" "$RUN_DIR" > "$RUN_DIR/score.json" 2>/dev/null
+"$SKILL_DIR/scripts/build-report.sh" "$RUN_DIR" > ./crawl-sim-report.json 2>/dev/null
+
+# Verify — exact field paths from output-schemas.md
+# compute-score.sh: .overall.score, .overall.grade, .pageType, .parity.score
+# Per-bot: .bots.<id>.score, .bots.<id>.grade, .bots.<id>.visibility.effectiveWords
+# Categories: .categories.accessibility.score, .categories.contentVisibility.score,
+#   .categories.structuredData.score, .categories.technicalSignals.score, .categories.aiReadiness.score
+echo "Overall: $(jq -r '.overall.score' "$RUN_DIR/score.json")/100 $(jq -r '.overall.grade' "$RUN_DIR/score.json") ($(jq -r '.pageType' "$RUN_DIR/score.json"))"
+for bot in googlebot gptbot claudebot perplexitybot; do
+  echo "$bot: $(jq -r ".bots.${bot}.score" "$RUN_DIR/score.json") $(jq -r ".bots.${bot}.grade" "$RUN_DIR/score.json")"
+done
+echo "Parity: $(jq -r '.parity.score' "$RUN_DIR/score.json")"
 ```
 
 **Page-type awareness.** `compute-score.sh` derives a page type from the target URL (`root` / `detail` / `archive` / `faq` / `about` / `contact` / `generic`) and picks a schema rubric accordingly. Root pages are expected to ship `Organization` + `WebSite` — penalizing them for missing `BreadcrumbList` or `FAQPage` would be wrong, so the scorer doesn't. If the URL heuristic picks the wrong type (e.g., a homepage at `/en/` that URL-parses as generic), pass `--page-type <type>`:
@@ -247,11 +297,35 @@ After findings, write a **Summary** paragraph: what's working well, biggest wins
 When the user passes `--pdf`, after the narrative output, generate a PDF report:
 
 ```bash
-"$SKILL_DIR/scripts/generate-report-html.sh" ./crawl-sim-report.json "$RUN_DIR/report.html"
-"$SKILL_DIR/scripts/html-to-pdf.sh" "$RUN_DIR/report.html" "$HOME/Desktop/crawl-sim-audit.pdf"
+# generate-report-html.sh and html-to-pdf.sh may be in SKILL_DIR or in the repo root.
+# Check SKILL_DIR first, fall back to repo scripts/ directory.
+if [ -x "$SKILL_DIR/scripts/generate-report-html.sh" ]; then
+  GEN_HTML="$SKILL_DIR/scripts/generate-report-html.sh"
+elif [ -x "skills/crawl-sim/scripts/generate-report-html.sh" ]; then
+  GEN_HTML="skills/crawl-sim/scripts/generate-report-html.sh"
+else
+  echo "WARNING: generate-report-html.sh not found" >&2
+  GEN_HTML=""
+fi
+
+if [ -x "$SKILL_DIR/scripts/html-to-pdf.sh" ]; then
+  TO_PDF="$SKILL_DIR/scripts/html-to-pdf.sh"
+elif [ -x "skills/crawl-sim/scripts/html-to-pdf.sh" ]; then
+  TO_PDF="skills/crawl-sim/scripts/html-to-pdf.sh"
+else
+  echo "WARNING: html-to-pdf.sh not found" >&2
+  TO_PDF=""
+fi
+
+if [ -n "$GEN_HTML" ]; then
+  "$GEN_HTML" ./crawl-sim-report.json "$RUN_DIR/report.html" 2>/dev/null
+fi
+if [ -n "$TO_PDF" ] && [ -f "$RUN_DIR/report.html" ]; then
+  "$TO_PDF" "$RUN_DIR/report.html" "$HOME/Desktop/crawl-sim-audit.pdf" 2>/dev/null
+fi
 ```
 
-Tell the user where the PDF was saved. If `html-to-pdf.sh` fails (no Chrome or Playwright), the HTML file is still available — tell the user and suggest installing a renderer.
+Tell the user where the PDF was saved. If `html-to-pdf.sh` fails (no Chrome or Playwright), the HTML file is still available. If `generate-report-html.sh` is not found, the agent should generate the HTML report inline using the JSON data from `crawl-sim-report.json` and then pass it to `html-to-pdf.sh`.
 
 ## Comparative Audit (`--compare <url2>`)
 
@@ -262,13 +336,26 @@ When the user passes `--compare <url2>`, run two full audits and produce a side-
 3. Generate the comparison:
 
 ```bash
-"$SKILL_DIR/scripts/generate-compare-html.sh" ./crawl-sim-report-a.json ./crawl-sim-report-b.json "$RUN_DIR/compare.html"
+# Same fallback logic as single-site PDF — check SKILL_DIR then repo
+if [ -x "$SKILL_DIR/scripts/generate-compare-html.sh" ]; then
+  GEN_CMP="$SKILL_DIR/scripts/generate-compare-html.sh"
+elif [ -x "skills/crawl-sim/scripts/generate-compare-html.sh" ]; then
+  GEN_CMP="skills/crawl-sim/scripts/generate-compare-html.sh"
+else
+  GEN_CMP=""
+fi
+
+if [ -n "$GEN_CMP" ]; then
+  "$GEN_CMP" ./crawl-sim-report-a.json ./crawl-sim-report-b.json "$RUN_DIR/compare.html" 2>/dev/null
+fi
 ```
 
 4. If `--pdf` was also passed:
 
 ```bash
-"$SKILL_DIR/scripts/html-to-pdf.sh" "$RUN_DIR/compare.html" "$HOME/Desktop/crawl-sim-compare.pdf"
+if [ -n "$TO_PDF" ] && [ -f "$RUN_DIR/compare.html" ]; then
+  "$TO_PDF" "$RUN_DIR/compare.html" "$HOME/Desktop/crawl-sim-compare.pdf" 2>/dev/null
+fi
 ```
 
 The narrative for a comparison should lead with: which site wins overall, by how many points, and in which categories. Then highlight the biggest deltas — what Site A does better, what Site B does better, and what both share.
