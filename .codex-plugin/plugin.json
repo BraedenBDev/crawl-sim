@@ -1,0 +1,41 @@
+{
+  "name": "crawl-sim",
+  "version": "1.4.4",
+  "description": "Agent-native multi-bot web crawler simulator. Audit how Googlebot, GPTBot, ClaudeBot, and PerplexityBot see a site.",
+  "author": {
+    "name": "BraedenBDev",
+    "url": "https://github.com/BraedenBDev"
+  },
+  "homepage": "https://github.com/BraedenBDev/crawl-sim#readme",
+  "repository": "https://github.com/BraedenBDev/crawl-sim",
+  "license": "MIT",
+  "keywords": [
+    "seo",
+    "crawler",
+    "googlebot",
+    "gptbot",
+    "claudebot",
+    "perplexitybot",
+    "ai-visibility",
+    "llms-txt"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "crawl-sim",
+    "shortDescription": "Audit a site as search and AI crawlers.",
+    "longDescription": "Runs a multi-bot visibility audit that compares how Googlebot, GPTBot, ClaudeBot, and PerplexityBot can access and understand a page.",
+    "developerName": "BraedenBDev",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/BraedenBDev/crawl-sim",
+    "defaultPrompt": [
+      "Audit https://example.com for AI crawler visibility",
+      "Compare my site with a competitor using crawl-sim",
+      "Check robots.txt, schema, and parity for this URL"
+    ],
+    "brandColor": "#D97757"
+  }
+}

@@ -25,6 +25,13 @@ ALLOW_PATHS_FILE=$(mktemp "$TMPDIR/crawlsim-allow.XXXXXX")
 SITEMAPS_FILE=$(mktemp "$TMPDIR/crawlsim-sitemaps.XXXXXX")
 trap 'rm -f "$ROBOTS_FILE" "$RAW_FILE" "$DISALLOWED_PATHS_FILE" "$ALLOW_PATHS_FILE" "$SITEMAPS_FILE"' EXIT
 
+TIMEOUT_CMD=""
+if command -v timeout >/dev/null 2>&1; then
+  TIMEOUT_CMD="timeout"
+elif command -v gtimeout >/dev/null 2>&1; then
+  TIMEOUT_CMD="gtimeout"
+fi
+
 HTTP_STATUS=$(fetch_to_file "$ROBOTS_URL" "$ROBOTS_FILE")
 
 EXISTS=false
@@ -135,8 +142,13 @@ if [ "$EXISTS" = "true" ]; then
     local path="$2"
     local esc
     esc=$(printf '%s' "$pat" | sed 's/[].[\^()+?{|]/\\&/g' | sed 's/\*/.*/g')
-    # Use timeout-bounded grep to prevent ReDoS from crafted patterns
-    printf '%s' "$path" | timeout 2 grep -qE "^${esc}" 2>/dev/null
+    if [ -n "$TIMEOUT_CMD" ]; then
+      # Bound the matcher when timeout is available, but keep a portable fallback
+      # for default macOS installs where GNU timeout is absent.
+      printf '%s' "$path" | "$TIMEOUT_CMD" 2 grep -qE "^${esc}" 2>/dev/null
+    else
+      printf '%s' "$path" | grep -qE "^${esc}" 2>/dev/null
+    fi
   }
 
   while IFS= read -r pat; do

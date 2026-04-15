@@ -68,16 +68,27 @@ SERVER_WORDS=$(count_words "$SERVER_HTML")
 [ -z "$SERVER_WORDS" ] && SERVER_WORDS=0
 
 # Use Playwright to render and capture the final DOM
+# Avoid a hard dependency on `networkidle` because analytics-heavy sites often
+# keep the network busy indefinitely, causing false skips on otherwise healthy pages.
 node -e "
 (async () => {
-  const { chromium } = require('playwright');
+  const playwright = (() => {
+    try {
+      return require('playwright');
+    } catch (e) {
+      return require('playwright-core');
+    }
+  })();
+  const { chromium } = playwright;
   const browser = await chromium.launch({ headless: true });
   try {
     const context = await browser.newContext({
       userAgent: 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)'
     });
     const page = await context.newPage();
-    await page.goto(process.argv[1], { waitUntil: 'networkidle', timeout: 30000 });
+    await page.goto(process.argv[1], { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(3000);
     const html = await page.content();
     const fs = require('fs');
     fs.writeFileSync(process.argv[2], html);

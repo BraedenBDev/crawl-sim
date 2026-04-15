@@ -728,7 +728,7 @@ TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 jq -n \
   --arg url "$TARGET_URL" \
   --arg timestamp "$TIMESTAMP" \
-  --arg version "0.2.0" \
+  --arg version "1.4.4" \
   --arg pageType "$PAGE_TYPE" \
   --arg pageTypeOverride "$PAGE_TYPE_OVERRIDE" \
   --argjson overallScore "$OVERALL_SCORE" \

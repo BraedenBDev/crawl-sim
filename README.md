@@ -13,29 +13,34 @@ Google renders your JavaScript. GPTBot, ClaudeBot, and PerplexityBot don't. They
 
 This is for developers checking their own sites, agencies who need to show clients the gap with numbers, and SEO teams adding GEO to their toolkit.
 
-Ships as a [Claude Code plugin](https://docs.claude.com/en/docs/claude-code/plugins). Scoring, extraction, and validation run in bash, not in your context window. A full audit uses ~2,500 output tokens vs ~10,000+ if Claude wrote the pipeline from scratch each time.
+Ships as a [Claude Code plugin](https://docs.claude.com/en/docs/claude-code/plugins) and a Codex-compatible local plugin. Scoring, extraction, and validation run in bash, not in your context window. A full audit uses ~2,500 output tokens vs ~10,000+ if the agent wrote the pipeline from scratch each time.
 
 ---
 
 ## Quick start
 
-```
+Claude Code:
+
+```text
 /plugin marketplace add BraedenBDev/crawl-sim
 /plugin install crawl-sim@crawl-sim
 /crawl-sim https://yoursite.com
 ```
 
-Or via npm:
+Codex:
 
 ```bash
-npm install -g @braedenbuilds/crawl-sim && crawl-sim install
+npm install -g @braedenbuilds/crawl-sim
+crawl-sim install --codex
 ```
+
+Then restart Codex, open Plugins, install `crawl-sim` from your local marketplace, and ask Codex to use `@crawl-sim` on a URL.
 
 Or standalone:
 
 ```bash
-git clone https://github.com/BraedenBDev/crawl-sim.git
-cd crawl-sim
+git clone https://github.com/BraedenBDev/crawl-sim.git ~/plugins/crawl-sim
+cd ~/plugins/crawl-sim
 ./scripts/fetch-as-bot.sh https://yoursite.com profiles/gptbot.json | jq '{status, wordCount, timing}'
 ```
 
@@ -45,12 +50,21 @@ Requires `curl` + `jq`. The installer will offer to set up Playwright for you, o
 
 ## Usage
 
-```
+Claude Code:
+
+```text
 /crawl-sim https://yoursite.com                                    # full audit
 /crawl-sim https://yoursite.com --bot gptbot                       # single bot
 /crawl-sim https://yoursite.com --pdf                              # audit + PDF
 /crawl-sim https://yoursite.com --compare https://competitor.com   # side-by-side
 /crawl-sim https://yoursite.com --json                             # JSON only (CI)
+```
+
+Codex:
+
+```text
+@crawl-sim Audit https://yoursite.com
+@crawl-sim Compare https://yoursite.com and https://competitor.com
 ```
 
 Output: score card, narrative with prioritized fixes, and `crawl-sim-report.json`.
@@ -72,7 +86,7 @@ Every script is standalone:
 - **Scored 0-100** across five categories (accessibility, content, structured data, technical, AI readiness) with page-type-aware schema rubrics
 - **Cross-bot parity** measures whether all bots see the same content and surfaces CSR gaps as the headline finding
 - **PDF reports + competitive comparisons** via `--pdf` and `--compare <url2>` for client-facing output
-- **70 regression tests** covering scoring, field validation, parity, critical-fail criteria
+- **Regression coverage** for scoring, field validation, parity, report generation, and critical-fail criteria
 - **Shell-native** with `curl` + `jq` only, no runtime dependencies
 
 ---
@@ -118,11 +132,12 @@ Sources: [`research/bot-profiles-verified.md`](./research/bot-profiles-verified.
 ```
 crawl-sim/
 ├── .claude-plugin/            plugin manifest
+├── .codex-plugin/             Codex plugin manifest
 ├── skills/crawl-sim/
 │   ├── SKILL.md               orchestrator
 │   ├── profiles/              9 bot profiles
 │   └── scripts/               15 scripts (fetch, extract, check, score, report, pdf)
-├── test/                      70 assertions + synthetic fixtures
+├── test/                      regression assertions + synthetic fixtures
 ├── docs/output-schemas.md     JSON contracts
 └── bin/install.js             npm installer
 ```

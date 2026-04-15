@@ -7,11 +7,16 @@ set -eu
 
 REPORT="${1:?Usage: generate-report-html.sh <report.json> [output.html]}"
 OUTPUT="${2:-}"
+REPORT_VERSION="1.4.4"
 
 if [ ! -f "$REPORT" ]; then
   echo "Error: report not found: $REPORT" >&2
   exit 1
 fi
+
+html_escape() {
+  printf '%s' "${1:-}" | jq -Rr @html
+}
 
 # Extract key data
 URL=$(jq -r '.url' "$REPORT")
@@ -28,29 +33,47 @@ if [ "$ALL_BLOCKED" = "true" ]; then
   PARITY_INTERP="All bots receive the same error response. Parity here reflects uniform blocking, not uniform visibility."
 fi
 
+PARITY_CLASS="parity"
+if [ "$ALL_BLOCKED" = "true" ] || { [ "${PARITY_SCORE:-0}" -lt 50 ] 2>/dev/null; }; then
+  PARITY_CLASS="$PARITY_CLASS low"
+fi
+
+URL_ESC=$(html_escape "$URL")
+TIMESTAMP_ESC=$(html_escape "$TIMESTAMP")
+PAGE_TYPE_ESC=$(html_escape "$PAGE_TYPE")
+OVERALL_SCORE_ESC=$(html_escape "$OVERALL_SCORE")
+OVERALL_GRADE_ESC=$(html_escape "$OVERALL_GRADE")
+PARITY_SCORE_ESC=$(html_escape "$PARITY_SCORE")
+PARITY_GRADE_ESC=$(html_escape "$PARITY_GRADE")
+PARITY_INTERP_ESC=$(html_escape "$PARITY_INTERP")
+
 # Build per-bot table rows
 BOT_ROWS=$(jq -r '
+  def eh: tostring | @html;
+  def css_token: tostring | gsub("[^A-Za-z0-9_-]"; "_");
   .bots | to_entries[] |
-  "<tr><td>\(.value.name)</td><td>\(.value.score)</td><td>\(.value.grade)</td>" +
+  "<tr><td>\(.value.name | eh)</td><td>\(.value.score)</td><td>\(.value.grade | eh)</td>" +
   "<td>\(.value.categories.accessibility.score)</td>" +
   "<td>\(.value.categories.contentVisibility.score)</td>" +
   "<td>\(.value.categories.structuredData.score)</td>" +
   "<td>\(.value.categories.technicalSignals.score)</td>" +
   "<td>\(.value.categories.aiReadiness.score)</td>" +
-  "<td>\(.value.purpose // "-")</td>" +
-  "<td class=\"enforce-\(.value.robotsTxtEnforceability // "unknown")\">\(.value.robotsTxtEnforceability // "-")</td></tr>"
+  "<td>\((.value.purpose // "-") | eh)</td>" +
+  "<td class=\"enforce-\((.value.robotsTxtEnforceability // "unknown") | css_token)\">\((.value.robotsTxtEnforceability // "-") | eh)</td></tr>"
 ' "$REPORT")
 
 # Build category averages
 CAT_ROWS=$(jq -r '
+  def eh: tostring | @html;
   .categories | to_entries[] |
-  "<tr><td>\(.key)</td><td>\(.value.score)</td><td>\(.value.grade)</td></tr>"
+  "<tr><td>\(.key | eh)</td><td>\(.value.score)</td><td>\(.value.grade | eh)</td></tr>"
 ' "$REPORT")
 
 # Build warnings
 WARNINGS_HTML=$(jq -r '
+  def eh: tostring | @html;
   if (.warnings | length) > 0 then
-    (.warnings[] | "<div class=\"warning\"><strong>⚠ \(.code)</strong>: \(.message)</div>")
+    (.warnings[] | "<div class=\"warning\"><strong>⚠ \(.code | eh)</strong>: \(.message | eh)</div>")
   else
     "<div class=\"ok\">No warnings.</div>"
   end
@@ -58,12 +81,14 @@ WARNINGS_HTML=$(jq -r '
 
 # Build structured data details for first bot
 SD_DETAILS=$(jq -r '
+  def eh: tostring | @html;
+  def join_html: map(tostring | @html) | join(", ");
   .bots | to_entries[0].value.categories.structuredData |
-  "<p><strong>Page type:</strong> \(.pageType)</p>" +
-  "<p><strong>Present:</strong> \(.present | join(", "))</p>" +
-  "<p><strong>Missing:</strong> \(if (.missing | length) > 0 then (.missing | join(", ")) else "none" end)</p>" +
-  "<p><strong>Violations:</strong> \(if (.violations | length) > 0 then (.violations | map("\(.kind): \(.schema // .field // "")") | join(", ")) else "none" end)</p>" +
-  "<p><strong>Notes:</strong> \(.notes)</p>"
+  "<p><strong>Page type:</strong> \(.pageType | eh)</p>" +
+  "<p><strong>Present:</strong> \(.present | join_html)</p>" +
+  "<p><strong>Missing:</strong> \(if (.missing | length) > 0 then (.missing | join_html) else "none" end)</p>" +
+  "<p><strong>Violations:</strong> \(if (.violations | length) > 0 then (.violations | map((("\(.kind): \(.schema // .field // "")") | @html)) | join(", ")) else "none" end)</p>" +
+  "<p><strong>Notes:</strong> \(.notes | eh)</p>"
 ' "$REPORT")
 
 # Auto-generate findings from the JSON data
@@ -224,6 +249,7 @@ FINDINGS_JSON=$(jq '
 
 # Build findings HTML (sorted by severity: high, medium, low)
 FINDINGS_HTML=$(echo "$FINDINGS_JSON" | jq -r '
+  def eh: tostring | @html;
   def sev_order: if . == "high" then 1 elif . == "medium" then 2 else 3 end;
   sort_by(.severity | sev_order) |
   if length == 0 then
@@ -231,11 +257,11 @@ FINDINGS_HTML=$(echo "$FINDINGS_JSON" | jq -r '
   else
     to_entries | map(
       "<div class=\"finding severity-\(.value.severity)\">" +
-      "<h3><span class=\"badge badge-\(.value.severity)\">\(.value.severity | ascii_upcase)</span> \(.key + 1). \(.value.title)</h3>" +
-      "<p><strong>Category:</strong> \(.value.category)</p>" +
-      "<p><strong>Observed:</strong> \(.value.observed)</p>" +
-      "<p><strong>Fix:</strong> \(.value.fix)</p>" +
-      "<p><strong>Impact:</strong> \(.value.impact)</p>" +
+      "<h3><span class=\"badge badge-\(.value.severity)\">\(.value.severity | ascii_upcase | eh)</span> \(.key + 1). \(.value.title | eh)</h3>" +
+      "<p><strong>Category:</strong> \(.value.category | eh)</p>" +
+      "<p><strong>Observed:</strong> \(.value.observed | eh)</p>" +
+      "<p><strong>Fix:</strong> \(.value.fix | eh)</p>" +
+      "<p><strong>Impact:</strong> \(.value.impact | eh)</p>" +
       "</div>"
     ) | join("")
   end
@@ -263,7 +289,7 @@ HTML=$(cat <<HTMLEOF
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>crawl-sim Audit — ${URL}</title>
+<title>crawl-sim Audit — ${URL_ESC}</title>
 <style>
   @page { size: A4; margin: 15mm; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -306,21 +332,21 @@ HTML=$(cat <<HTMLEOF
 <body>
 
 <h1>crawl-sim — Bot Visibility Audit</h1>
-<div class="subtitle">${URL} &middot; ${TIMESTAMP} &middot; Page type: ${PAGE_TYPE}</div>
+<div class="subtitle">${URL_ESC} &middot; ${TIMESTAMP_ESC} &middot; Page type: ${PAGE_TYPE_ESC}</div>
 
 <div class="score-hero">
   <div>
-    <span class="score-big">${OVERALL_SCORE}</span><span style="font-size:24px;color:#666">/100</span>
+    <span class="score-big">${OVERALL_SCORE_ESC}</span><span style="font-size:24px;color:#666">/100</span>
   </div>
   <div>
-    <div class="grade-big">${OVERALL_GRADE}</div>
+    <div class="grade-big">${OVERALL_GRADE_ESC}</div>
     <div class="score-meta">Overall Score</div>
   </div>
 </div>
 
-<div class="parity${PARITY_SCORE:+ }$([ "$ALL_BLOCKED" = "true" ] && echo 'low' || ([ "$PARITY_SCORE" -lt 50 ] 2>/dev/null && echo 'low' || echo ''))">
-  <div><strong>Content Parity:</strong> ${PARITY_SCORE}/100 (${PARITY_GRADE})</div>
-  <div>${PARITY_INTERP}</div>
+<div class="${PARITY_CLASS}">
+  <div><strong>Content Parity:</strong> ${PARITY_SCORE_ESC}/100 (${PARITY_GRADE_ESC})</div>
+  <div>${PARITY_INTERP_ESC}</div>
 </div>
 
 ${WARNINGS_HTML}
@@ -347,7 +373,7 @@ ${FINDINGS_HTML}
 <h2>Structured Data Details</h2>
 <div class="sd-details">${SD_DETAILS}</div>
 <div class="footer">
-  Generated by crawl-sim v1.4.4 &middot; <a href="https://github.com/BraedenBDev/crawl-sim">github.com/BraedenBDev/crawl-sim</a>
+  Generated by crawl-sim v${REPORT_VERSION} &middot; <a href="https://github.com/BraedenBDev/crawl-sim">github.com/BraedenBDev/crawl-sim</a>
 </div>
 </div>
 
