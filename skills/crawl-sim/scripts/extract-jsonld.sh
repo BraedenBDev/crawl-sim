@@ -81,14 +81,24 @@ if [ "$BLOCK_COUNT" -gt 0 ]; then
         collect_types
       ' 2>/dev/null >> "$TYPES_FILE" || true
 
-      # Extract per-block type + top-level field names for field validation (AC-B1)
-      BLOCK_INFO=$(printf '%s' "$block" | jq -c '
-        {
-          type: (if has("@type") then (.["@type"] | if type == "array" then .[0] else . end) else "unknown" end),
-          fields: (keys | map(select(startswith("@") | not)))
-        }
-      ' 2>/dev/null || echo '{"type":"unknown","fields":[]}')
-      BLOCKS_JSON=$(printf '%s' "$BLOCKS_JSON" | jq --argjson b "$BLOCK_INFO" '. + [$b]')
+      # Emit one validation block per typed schema node, including nested @graph
+      # members, so required-field checks apply to real schema objects.
+      BLOCK_INFOS=$(printf '%s' "$block" | jq -c '
+        def typed_nodes:
+          if type == "object" then
+            (if has("@type") then [{
+              type: (.["@type"] | if type == "array" then .[0] else . end),
+              fields: (keys | map(select(startswith("@") | not)))
+            }] else [] end)
+            + (if has("@graph") then (.["@graph"] | typed_nodes) else [] end)
+          elif type == "array" then
+            (map(typed_nodes) | add // [])
+          else
+            []
+          end;
+        typed_nodes
+      ' 2>/dev/null || echo '[]')
+      BLOCKS_JSON=$(printf '%s' "$BLOCKS_JSON" | jq --argjson b "$BLOCK_INFOS" '. + $b')
     else
       INVALID_COUNT=$((INVALID_COUNT + 1))
     fi

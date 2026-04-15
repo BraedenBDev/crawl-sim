@@ -8,6 +8,11 @@ set -eu
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 COMPUTE_SCORE="$REPO_ROOT/scripts/compute-score.sh"
+BUILD_REPORT="$REPO_ROOT/scripts/build-report.sh"
+GENERATE_REPORT_HTML="$REPO_ROOT/scripts/generate-report-html.sh"
+GENERATE_COMPARE_HTML="$REPO_ROOT/scripts/generate-compare-html.sh"
+CHECK_ROBOTS="$REPO_ROOT/scripts/check-robots.sh"
+EXTRACT_JSONLD="$REPO_ROOT/scripts/extract-jsonld.sh"
 
 if [ ! -x "$COMPUTE_SCORE" ]; then
   echo "compute-score.sh is not executable or missing: $COMPUTE_SCORE" >&2
@@ -325,7 +330,7 @@ assert_eq "$LINKS_TOTAL" "10" "top-level total field present in flat schema"
 
 case_begin "AC-8/M5: build-report.sh merges score + raw data"
 "$COMPUTE_SCORE" "$SCRIPT_DIR/fixtures/root-minimal" > "$SCRIPT_DIR/fixtures/root-minimal/score.json" 2>/dev/null
-if REPORT=$("$REPO_ROOT/skills/crawl-sim/scripts/build-report.sh" "$SCRIPT_DIR/fixtures/root-minimal" 2>/dev/null); then
+if REPORT=$("$BUILD_REPORT" "$SCRIPT_DIR/fixtures/root-minimal" 2>/dev/null); then
   HAS_RAW=$(printf '%s' "$REPORT" | jq 'has("raw")')
   HAS_PERBOT=$(printf '%s' "$REPORT" | jq '.raw | has("perBot")')
   HAS_INDEPENDENT=$(printf '%s' "$REPORT" | jq '.raw | has("independent")')
@@ -338,6 +343,41 @@ else
   fail "build-report.sh exited non-zero"
 fi
 rm -f "$SCRIPT_DIR/fixtures/root-minimal/score.json"
+
+case_begin "Security: generated HTML report escapes attacker-controlled markup"
+TMP_FIXTURE=$(mktemp -d)
+cp "$SCRIPT_DIR/fixtures/root-minimal/"*.json "$TMP_FIXTURE/"
+"$COMPUTE_SCORE" "$TMP_FIXTURE" > "$TMP_FIXTURE/score.json" 2>/dev/null
+if "$BUILD_REPORT" "$TMP_FIXTURE" > "$TMP_FIXTURE/report.json" 2>/dev/null; then
+  jq '.bots.googlebot.categories.structuredData.notes = "<script>alert(1)</script>"' \
+    "$TMP_FIXTURE/report.json" > "$TMP_FIXTURE/malicious.json"
+  if HTML=$("$GENERATE_REPORT_HTML" "$TMP_FIXTURE/malicious.json" 2>/dev/null); then
+    assert_contains "$HTML" "&lt;script&gt;alert(1)&lt;/script&gt;" "report HTML escapes script payload"
+    assert_not_contains "$HTML" "<script>alert(1)</script>" "report HTML omits raw injected script"
+  else
+    fail "generate-report-html.sh exited non-zero on malicious report fixture"
+  fi
+else
+  fail "build-report.sh exited non-zero while preparing malicious report fixture"
+fi
+rm -rf "$TMP_FIXTURE"
+
+case_begin "Report: generate-compare-html.sh succeeds on two valid reports"
+TMP_FIXTURE=$(mktemp -d)
+cp "$SCRIPT_DIR/fixtures/root-minimal/"*.json "$TMP_FIXTURE/"
+"$COMPUTE_SCORE" "$TMP_FIXTURE" > "$TMP_FIXTURE/score.json" 2>/dev/null
+if "$BUILD_REPORT" "$TMP_FIXTURE" > "$TMP_FIXTURE/a.json" 2>/dev/null; then
+  cp "$TMP_FIXTURE/a.json" "$TMP_FIXTURE/b.json"
+  if HTML=$("$GENERATE_COMPARE_HTML" "$TMP_FIXTURE/a.json" "$TMP_FIXTURE/b.json" 2>/dev/null); then
+    assert_contains "$HTML" "Comparative Audit" "compare HTML includes page heading"
+    assert_contains "$HTML" "googlebot" "compare HTML includes per-bot table rows"
+  else
+    fail "generate-compare-html.sh exited non-zero on two valid reports"
+  fi
+else
+  fail "build-report.sh exited non-zero while preparing compare reports"
+fi
+rm -rf "$TMP_FIXTURE"
 
 # ----- R4: critical-fail robots blocking (AC-10) -----
 
@@ -362,6 +402,61 @@ if OUT=$(run_score root-overreaching 2>/dev/null); then
 else
   fail "compute-score.sh exited non-zero on root-overreaching"
 fi
+
+case_begin "Robots: check-robots.sh respects Disallow: / for matching paths"
+TMP_FIXTURE=$(mktemp -d)
+PORT=$(python3 - <<'EOF'
+import socket
+s = socket.socket()
+s.bind(("127.0.0.1", 0))
+print(s.getsockname()[1])
+s.close()
+EOF
+)
+cat > "$TMP_FIXTURE/robots.txt" <<'EOF'
+User-agent: GPTBot
+Disallow: /
+EOF
+cat > "$TMP_FIXTURE/index.html" <<'EOF'
+hello
+EOF
+python3 -m http.server "$PORT" --bind 127.0.0.1 --directory "$TMP_FIXTURE" >/dev/null 2>&1 &
+SERVER_PID=$!
+sleep 1
+if OUT=$("$CHECK_ROBOTS" "http://127.0.0.1:${PORT}/index.html" "GPTBot" 2>/dev/null); then
+  ALLOWED=$(printf '%s' "$OUT" | jq -r '.allowed')
+  assert_eq "$ALLOWED" "false" "Disallow: / blocks a matching GPTBot fetch"
+else
+  fail "check-robots.sh exited non-zero against local robots fixture"
+fi
+kill "$SERVER_PID" >/dev/null 2>&1 || true
+wait "$SERVER_PID" 2>/dev/null || true
+rm -rf "$TMP_FIXTURE"
+
+case_begin "Structured data: invalid @graph members trigger required-field violations"
+TMP_FIXTURE=$(mktemp -d)
+cp "$SCRIPT_DIR/fixtures/root-minimal/fetch-googlebot.json" "$TMP_FIXTURE/"
+cp "$SCRIPT_DIR/fixtures/root-minimal/meta-googlebot.json" "$TMP_FIXTURE/"
+cp "$SCRIPT_DIR/fixtures/root-minimal/links-googlebot.json" "$TMP_FIXTURE/"
+cp "$SCRIPT_DIR/fixtures/root-minimal/robots-googlebot.json" "$TMP_FIXTURE/"
+cp "$SCRIPT_DIR/fixtures/root-minimal/llmstxt.json" "$TMP_FIXTURE/"
+cp "$SCRIPT_DIR/fixtures/root-minimal/sitemap.json" "$TMP_FIXTURE/"
+cat > "$TMP_FIXTURE/graph.html" <<'EOF'
+<html><head><script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","name":"Acme"},{"@type":"WebSite","name":"Acme"}]}</script></head><body><h1>Home</h1></body></html>
+EOF
+if "$EXTRACT_JSONLD" "$TMP_FIXTURE/graph.html" > "$TMP_FIXTURE/jsonld-googlebot.json" 2>/dev/null; then
+  if OUT=$("$COMPUTE_SCORE" "$TMP_FIXTURE" 2>/dev/null); then
+    FIELD_VIOLATIONS=$(printf '%s' "$OUT" | jq '[.bots.googlebot.categories.structuredData.violations[] | select(.kind=="missing_required_field")] | length')
+    SCORE=$(printf '%s' "$OUT" | jq -r '.bots.googlebot.categories.structuredData.score')
+    assert_ge "$FIELD_VIOLATIONS" "2" "missing required-field violations emitted for @graph members"
+    assert_lt "$SCORE" "100" "invalid @graph members reduce structured-data score"
+  else
+    fail "compute-score.sh exited non-zero on @graph fixture"
+  fi
+else
+  fail "extract-jsonld.sh exited non-zero on @graph fixture"
+fi
+rm -rf "$TMP_FIXTURE"
 
 # ----- Summary -----
 

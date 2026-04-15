@@ -42,6 +42,7 @@
     "bin/",
     "skills/",
     ".claude-plugin/",
+    ".codex-plugin/",
     "SKILL.md",
     "profiles",
     "scripts",

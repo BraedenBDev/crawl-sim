@@ -7,23 +7,37 @@ set -eu
 REPORT_A="${1:?Usage: generate-compare-html.sh <report-a.json> <report-b.json> [output.html]}"
 REPORT_B="${2:?Usage: generate-compare-html.sh <report-a.json> <report-b.json> [output.html]}"
 OUTPUT="${3:-}"
+REPORT_VERSION="1.4.4"
 
 for f in "$REPORT_A" "$REPORT_B"; do
   [ -f "$f" ] || { echo "Error: report not found: $f" >&2; exit 1; }
 done
 
+html_escape() {
+  printf '%s' "${1:-}" | jq -Rr @html
+}
+
 # Extract key data from both reports
-URL_A=$(jq -r '.url' "$REPORT_A")
-URL_B=$(jq -r '.url' "$REPORT_B")
-SCORE_A=$(jq -r '.overall.score' "$REPORT_A")
-SCORE_B=$(jq -r '.overall.score' "$REPORT_B")
-GRADE_A=$(jq -r '.overall.grade' "$REPORT_A")
-GRADE_B=$(jq -r '.overall.grade' "$REPORT_B")
-PARITY_A=$(jq -r '.parity.score' "$REPORT_A")
-PARITY_B=$(jq -r '.parity.score' "$REPORT_B")
+URL_A=$(jq -r '.url // ""' "$REPORT_A")
+URL_B=$(jq -r '.url // ""' "$REPORT_B")
+SCORE_A=$(jq -r '.overall.score // 0' "$REPORT_A")
+SCORE_B=$(jq -r '.overall.score // 0' "$REPORT_B")
+GRADE_A=$(jq -r '.overall.grade // "N/A"' "$REPORT_A")
+GRADE_B=$(jq -r '.overall.grade // "N/A"' "$REPORT_B")
+PARITY_A=$(jq -r '.parity.score // 0' "$REPORT_A")
+PARITY_B=$(jq -r '.parity.score // 0' "$REPORT_B")
+URL_A_ESC=$(html_escape "$URL_A")
+URL_B_ESC=$(html_escape "$URL_B")
+SCORE_A_ESC=$(html_escape "$SCORE_A")
+SCORE_B_ESC=$(html_escape "$SCORE_B")
+GRADE_A_ESC=$(html_escape "$GRADE_A")
+GRADE_B_ESC=$(html_escape "$GRADE_B")
+PARITY_A_ESC=$(html_escape "$PARITY_A")
+PARITY_B_ESC=$(html_escape "$PARITY_B")
 
 # Build category comparison rows
 CAT_COMPARE=$(jq -r --slurpfile b "$REPORT_B" '
+  def eh: tostring | @html;
   .categories | to_entries[] |
   . as $cat |
   ($b[0].categories[$cat.key]) as $bcat |
@@ -31,22 +45,23 @@ CAT_COMPARE=$(jq -r --slurpfile b "$REPORT_B" '
    elif $cat.value.score < $bcat.score then "winner-b"
    else "tie" end) as $cls |
   ($cat.value.score - $bcat.score) as $delta |
-  "<tr class=\"\($cls)\"><td>\($cat.key)</td>" +
-  "<td>\($cat.value.score) (\($cat.value.grade))</td>" +
-  "<td>\($bcat.score) (\($bcat.grade))</td>" +
+  "<tr class=\"\($cls)\"><td>\($cat.key | eh)</td>" +
+  "<td>\($cat.value.score) (\($cat.value.grade | eh))</td>" +
+  "<td>\($bcat.score) (\($bcat.grade | eh))</td>" +
   "<td>\(if $delta > 0 then "+\($delta)" elif $delta < 0 then "\($delta)" else "=" end)</td></tr>"
 ' "$REPORT_A")
 
 # Build per-bot comparison (using the 4 main bots)
 BOT_COMPARE=$(jq -r --slurpfile b "$REPORT_B" '
-  ["googlebot", "gptbot", "claudebot", "perplexitybot"] | .[] |
-  . as $id |
-  (input.bots[$id] // {score: 0, grade: "N/A"}) as $ba |
+  def eh: tostring | @html;
+  . as $a |
+  ["googlebot", "gptbot", "claudebot", "perplexitybot"][] as $id |
+  ($a.bots[$id] // {score: 0, grade: "N/A"}) as $ba |
   ($b[0].bots[$id] // {score: 0, grade: "N/A"}) as $bb |
   ($ba.score - $bb.score) as $delta |
-  "<tr><td>\($id)</td>" +
-  "<td>\($ba.score) (\($ba.grade))</td>" +
-  "<td>\($bb.score) (\($bb.grade))</td>" +
+  "<tr><td>\($id | eh)</td>" +
+  "<td>\($ba.score) (\($ba.grade | eh))</td>" +
+  "<td>\($bb.score) (\($bb.grade | eh))</td>" +
   "<td>\(if $delta > 0 then "+\($delta)" elif $delta < 0 then "\($delta)" else "=" end)</td></tr>"
 ' "$REPORT_A")
 
@@ -66,6 +81,24 @@ WINS_A=$(jq --slurpfile b "$REPORT_B" '
 WINS_B=$(jq --slurpfile b "$REPORT_B" '
   [.categories | to_entries[] | select(.value.score < ($b[0].categories[.key].score))] | length
 ' "$REPORT_A")
+WINS_A_ESC=$(html_escape "$WINS_A")
+WINS_B_ESC=$(html_escape "$WINS_B")
+WINNER_ESC=$(html_escape "$WINNER")
+SITE_A_WINNER_CLASS=""
+SITE_B_WINNER_CLASS=""
+if [ "$SCORE_A" -ge "$SCORE_B" ]; then
+  SITE_A_WINNER_CLASS=" winner"
+fi
+if [ "$SCORE_B" -gt "$SCORE_A" ]; then
+  SITE_B_WINNER_CLASS=" winner"
+fi
+PARITY_DELTA="="
+if [ "$PARITY_A" -gt "$PARITY_B" ] 2>/dev/null; then
+  PARITY_DELTA="+$((PARITY_A - PARITY_B))"
+elif [ "$PARITY_B" -gt "$PARITY_A" ] 2>/dev/null; then
+  PARITY_DELTA="-$((PARITY_B - PARITY_A))"
+fi
+PARITY_DELTA_ESC=$(html_escape "$PARITY_DELTA")
 
 HTML=$(cat <<HTMLEOF
 <!DOCTYPE html>
@@ -106,22 +139,22 @@ HTML=$(cat <<HTMLEOF
 <div class="subtitle">Generated $(date -u +"%Y-%m-%d %H:%M UTC")</div>
 
 <div class="vs-hero">
-  <div class="site-card$([ "$SCORE_A" -ge "$SCORE_B" ] && echo ' winner' || echo '')">
+  <div class="site-card${SITE_A_WINNER_CLASS}">
     <div style="font-size:12px;font-weight:600;color:#666;margin-bottom:8px">SITE A</div>
-    <div class="site-score">${SCORE_A}</div>
-    <div class="site-grade">${GRADE_A}</div>
-    <div class="site-url">${URL_A}</div>
+    <div class="site-score">${SCORE_A_ESC}</div>
+    <div class="site-grade">${GRADE_A_ESC}</div>
+    <div class="site-url">${URL_A_ESC}</div>
   </div>
   <div class="vs">VS</div>
-  <div class="site-card$([ "$SCORE_B" -gt "$SCORE_A" ] && echo ' winner' || echo '')">
+  <div class="site-card${SITE_B_WINNER_CLASS}">
     <div style="font-size:12px;font-weight:600;color:#666;margin-bottom:8px">SITE B</div>
-    <div class="site-score">${SCORE_B}</div>
-    <div class="site-grade">${GRADE_B}</div>
-    <div class="site-url">${URL_B}</div>
+    <div class="site-score">${SCORE_B_ESC}</div>
+    <div class="site-grade">${GRADE_B_ESC}</div>
+    <div class="site-url">${URL_B_ESC}</div>
   </div>
 </div>
 
-<div class="verdict">${WINNER} &middot; Site A wins ${WINS_A} categories, Site B wins ${WINS_B}</div>
+<div class="verdict">${WINNER_ESC} &middot; Site A wins ${WINS_A_ESC} categories, Site B wins ${WINS_B_ESC}</div>
 
 <h2>Category Breakdown</h2>
 <table>
@@ -129,9 +162,9 @@ HTML=$(cat <<HTMLEOF
 ${CAT_COMPARE}
 <tr style="font-weight:600;border-top:2px solid #1a1a1a">
   <td>Content Parity</td>
-  <td>${PARITY_A}</td>
-  <td>${PARITY_B}</td>
-  <td>$([ "$PARITY_A" -gt "$PARITY_B" ] 2>/dev/null && echo "+$((PARITY_A - PARITY_B))" || ([ "$PARITY_B" -gt "$PARITY_A" ] 2>/dev/null && echo "-$((PARITY_B - PARITY_A))" || echo "="))</td>
+  <td>${PARITY_A_ESC}</td>
+  <td>${PARITY_B_ESC}</td>
+  <td>${PARITY_DELTA_ESC}</td>
 </tr>
 </table>
 
@@ -142,7 +175,7 @@ ${BOT_COMPARE}
 </table>
 
 <div class="footer">
-  Generated by crawl-sim v1.4.0 &middot; <a href="https://github.com/BraedenBDev/crawl-sim">github.com/BraedenBDev/crawl-sim</a>
+  Generated by crawl-sim v${REPORT_VERSION} &middot; <a href="https://github.com/BraedenBDev/crawl-sim">github.com/BraedenBDev/crawl-sim</a>
 </div>
 
 </body>
