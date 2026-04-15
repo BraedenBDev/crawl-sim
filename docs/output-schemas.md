@@ -28,7 +28,8 @@ Every crawl-sim script writes JSON to stdout. This document specifies the exact 
   "finalUrl": "string — URL after all redirects",
   "redirectChain": "array — [{hop: number, status: number, location: string}]",
   "headers": "object — response headers as key-value pairs",
-  "bodyBase64": "string — base64-encoded HTML body"
+  "bodyFile": "string — relative file name when --out-dir is supplied, otherwise an absolute temp path",
+  "bodyBytes": "number — bytes written to bodyFile"
 }
 ```
 
@@ -46,7 +47,8 @@ Every crawl-sim script writes JSON to stdout. This document specifies the exact 
   "size": 0,
   "wordCount": 0,
   "headers": {},
-  "bodyBase64": ""
+  "bodyFile": "",
+  "bodyBytes": 0
 }
 ```
 
@@ -301,7 +303,7 @@ Merges `compute-score.sh` output with raw per-bot data:
   "raw": {
     "perBot": {
       "<bot_id>": {
-        "fetch": { /* subset of fetch-as-bot.sh output (no bodyBase64) */ },
+        "fetch": { /* subset of fetch-as-bot.sh output (no body payload) */ },
         "meta": { /* extract-meta.sh output */ },
         "jsonld": { /* extract-jsonld.sh output (blockCount, types, blocks) */ },
         "links": { /* extract-links.sh output */ },

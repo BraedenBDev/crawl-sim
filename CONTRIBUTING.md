@@ -58,11 +58,11 @@ TARGET="https://example.com"
 RUN_DIR=$(mktemp -d -t crawl-sim-dev.XXXXXX)
 
 for bot in googlebot gptbot claudebot perplexitybot; do
-  ./scripts/fetch-as-bot.sh "$TARGET" "profiles/${bot}.json" > "$RUN_DIR/fetch-${bot}.json"
-  jq -r '.bodyBase64' "$RUN_DIR/fetch-${bot}.json" | base64 -d > "$RUN_DIR/body-${bot}.html"
-  ./scripts/extract-meta.sh    "$RUN_DIR/body-${bot}.html" > "$RUN_DIR/meta-${bot}.json"
-  ./scripts/extract-jsonld.sh  "$RUN_DIR/body-${bot}.html" > "$RUN_DIR/jsonld-${bot}.json"
-  ./scripts/extract-links.sh "$TARGET" "$RUN_DIR/body-${bot}.html" > "$RUN_DIR/links-${bot}.json"
+  ./scripts/fetch-as-bot.sh --out-dir "$RUN_DIR" "$TARGET" "profiles/${bot}.json" > "$RUN_DIR/fetch-${bot}.json"
+  body_file=$(jq -r '.bodyFile' "$RUN_DIR/fetch-${bot}.json")
+  ./scripts/extract-meta.sh   "$RUN_DIR/$body_file" > "$RUN_DIR/meta-${bot}.json"
+  ./scripts/extract-jsonld.sh "$RUN_DIR/$body_file" > "$RUN_DIR/jsonld-${bot}.json"
+  ./scripts/extract-links.sh  "$TARGET" "$RUN_DIR/$body_file" > "$RUN_DIR/links-${bot}.json"
   token=$(jq -r '.robotsTxtToken' "profiles/${bot}.json")
   ./scripts/check-robots.sh "$TARGET" "$token" > "$RUN_DIR/robots-${bot}.json"
 done

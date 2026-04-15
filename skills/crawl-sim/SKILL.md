@@ -50,8 +50,10 @@ fi
 
 Locate the skill directory. Check in this order:
 1. `$CLAUDE_PLUGIN_ROOT/skills/crawl-sim` (plugin install)
-2. `~/.claude/skills/crawl-sim/` (global npm install)
-3. `.claude/skills/crawl-sim/` (project-level install)
+2. `~/plugins/crawl-sim/skills/crawl-sim/` (Codex local plugin install)
+3. `~/.claude/skills/crawl-sim/` (global npm install)
+4. `.claude/skills/crawl-sim/` (project-level install)
+5. `./skills/crawl-sim/` (repo checkout)
 
 ## Shell compatibility
 
@@ -71,17 +73,21 @@ Tell the user: "Fetching as Googlebot, GPTBot, ClaudeBot, and PerplexityBot in p
 # Resolve skill directory
 if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -d "$CLAUDE_PLUGIN_ROOT/skills/crawl-sim" ]; then
   SKILL_DIR="$CLAUDE_PLUGIN_ROOT/skills/crawl-sim"
+elif [ -d "$HOME/plugins/crawl-sim/skills/crawl-sim" ]; then
+  SKILL_DIR="$HOME/plugins/crawl-sim/skills/crawl-sim"
 elif [ -d "$HOME/.claude/skills/crawl-sim" ]; then
   SKILL_DIR="$HOME/.claude/skills/crawl-sim"
 elif [ -d ".claude/skills/crawl-sim" ]; then
   SKILL_DIR=".claude/skills/crawl-sim"
+elif [ -d "./skills/crawl-sim" ]; then
+  SKILL_DIR="./skills/crawl-sim"
 else
   echo "ERROR: cannot find crawl-sim skill directory" >&2; exit 1
 fi
 RUN_DIR=$(mktemp -d -t crawl-sim.XXXXXX)
 URL="<user-provided-url>"
 for bot in googlebot gptbot claudebot perplexitybot; do
-  "$SKILL_DIR/scripts/fetch-as-bot.sh" "$URL" "$SKILL_DIR/profiles/${bot}.json" > "$RUN_DIR/fetch-${bot}.json" 2>/dev/null &
+  "$SKILL_DIR/scripts/fetch-as-bot.sh" --out-dir "$RUN_DIR" "$URL" "$SKILL_DIR/profiles/${bot}.json" > "$RUN_DIR/fetch-${bot}.json" 2>/dev/null &
 done
 wait
 
@@ -89,7 +95,7 @@ wait
 for bot in googlebot gptbot claudebot perplexitybot; do
   if [ ! -s "$RUN_DIR/fetch-${bot}.json" ]; then
     echo "WARNING: fetch-${bot}.json is empty, retrying serially" >&2
-    "$SKILL_DIR/scripts/fetch-as-bot.sh" "$URL" "$SKILL_DIR/profiles/${bot}.json" > "$RUN_DIR/fetch-${bot}.json" 2>/dev/null
+    "$SKILL_DIR/scripts/fetch-as-bot.sh" --out-dir "$RUN_DIR" "$URL" "$SKILL_DIR/profiles/${bot}.json" > "$RUN_DIR/fetch-${bot}.json" 2>/dev/null
   fi
 done
 
@@ -109,10 +115,27 @@ Tell the user: "Extracting meta, JSON-LD, and links from each bot's view..."
 
 ```bash
 for bot in googlebot gptbot claudebot perplexitybot; do
-  jq -r '.bodyBase64' "$RUN_DIR/fetch-${bot}.json" | base64 -d > "$RUN_DIR/body-${bot}.html"
-  "$SKILL_DIR/scripts/extract-meta.sh"   "$RUN_DIR/body-${bot}.html" > "$RUN_DIR/meta-${bot}.json" 2>/dev/null
-  "$SKILL_DIR/scripts/extract-jsonld.sh" "$RUN_DIR/body-${bot}.html" > "$RUN_DIR/jsonld-${bot}.json" 2>/dev/null
-  "$SKILL_DIR/scripts/extract-links.sh"  "$URL" "$RUN_DIR/body-${bot}.html" > "$RUN_DIR/links-${bot}.json" 2>/dev/null
+  body_file=$(jq -r '.bodyFile // empty' "$RUN_DIR/fetch-${bot}.json")
+  case "$body_file" in
+    "")
+      body_path="$RUN_DIR/body-${bot}.html"
+      : > "$body_path"
+      ;;
+    /*)
+      body_path="$body_file"
+      ;;
+    *)
+      body_path="$RUN_DIR/$body_file"
+      ;;
+  esac
+  if [ ! -f "$body_path" ]; then
+    echo "WARNING: body file missing on disk for $bot, using empty placeholder" >&2
+    body_path="$RUN_DIR/body-${bot}.html"
+    : > "$body_path"
+  fi
+  "$SKILL_DIR/scripts/extract-meta.sh"   "$body_path" > "$RUN_DIR/meta-${bot}.json" 2>/dev/null
+  "$SKILL_DIR/scripts/extract-jsonld.sh" "$body_path" > "$RUN_DIR/jsonld-${bot}.json" 2>/dev/null
+  "$SKILL_DIR/scripts/extract-links.sh"  "$URL" "$body_path" > "$RUN_DIR/links-${bot}.json" 2>/dev/null
 done
 
 # Verify extractions — exact field paths from output-schemas.md
