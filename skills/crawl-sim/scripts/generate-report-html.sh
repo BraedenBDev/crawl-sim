@@ -7,7 +7,7 @@ set -eu
 
 REPORT="${1:?Usage: generate-report-html.sh <report.json> [output.html]}"
 OUTPUT="${2:-}"
-REPORT_VERSION="1.4.4"
+REPORT_VERSION="1.4.5"
 
 if [ ! -f "$REPORT" ]; then
   echo "Error: report not found: $REPORT" >&2
