@@ -15,5 +15,6 @@
     "robotsTxtToken": "Googlebot"
   },
   "finalUrl": "https://example.com/",
-  "bodyBase64": ""
+  "bodyFile": "body-googlebot.html",
+  "bodyBytes": 12345
 }

@@ -13,6 +13,7 @@ GENERATE_REPORT_HTML="$REPO_ROOT/scripts/generate-report-html.sh"
 GENERATE_COMPARE_HTML="$REPO_ROOT/scripts/generate-compare-html.sh"
 CHECK_ROBOTS="$REPO_ROOT/scripts/check-robots.sh"
 EXTRACT_JSONLD="$REPO_ROOT/scripts/extract-jsonld.sh"
+INSTALLER="$REPO_ROOT/bin/install.js"
 
 if [ ! -x "$COMPUTE_SCORE" ]; then
   echo "compute-score.sh is not executable or missing: $COMPUTE_SCORE" >&2
@@ -224,14 +225,30 @@ fi
 # ----- Sprint B: H3 redirect chain (AC-B6) -----
 
 case_begin "AC-B6: fetch-as-bot.sh output includes redirect fields"
-# Test against an actual fetch to verify the shape includes new fields.
-# We invoke fetch-as-bot.sh against httpbin which reliably returns 200.
-REDIRECT_TEST_OUT=$("$REPO_ROOT/scripts/fetch-as-bot.sh" "https://httpbin.org/get" "$REPO_ROOT/profiles/googlebot.json" 2>/dev/null || echo '{}')
+TMP_FIXTURE=$(mktemp -d)
+PORT=$(python3 - <<'EOF'
+import socket
+s = socket.socket()
+s.bind(("127.0.0.1", 0))
+print(s.getsockname()[1])
+s.close()
+EOF
+)
+cat > "$TMP_FIXTURE/index.html" <<'EOF'
+<html><body>redirect shape fixture</body></html>
+EOF
+python3 -m http.server "$PORT" --bind 127.0.0.1 --directory "$TMP_FIXTURE" >/dev/null 2>&1 &
+SERVER_PID=$!
+sleep 1
+REDIRECT_TEST_OUT=$("$REPO_ROOT/scripts/fetch-as-bot.sh" "http://127.0.0.1:${PORT}/index.html" "$REPO_ROOT/profiles/googlebot.json" 2>/dev/null || echo '{}')
+kill "$SERVER_PID" >/dev/null 2>&1 || true
+wait "$SERVER_PID" 2>/dev/null || true
+rm -rf "$TMP_FIXTURE"
 REDIRECT_COUNT=$(printf '%s' "$REDIRECT_TEST_OUT" | jq -r '.redirectCount // "missing"')
 FINAL_URL=$(printf '%s' "$REDIRECT_TEST_OUT" | jq -r '.finalUrl // "missing"')
 REDIRECT_CHAIN=$(printf '%s' "$REDIRECT_TEST_OUT" | jq -r '.redirectChain // "missing"')
 assert_eq "$REDIRECT_COUNT" "0" "redirectCount present for direct fetch"
-if [ "$FINAL_URL" != "missing" ]; then
+if [ "$FINAL_URL" = "http://127.0.0.1:${PORT}/index.html" ]; then
   pass "finalUrl field present"
 else
   fail "finalUrl field missing from fetch output"
@@ -241,6 +258,43 @@ if [ "$REDIRECT_CHAIN" != "missing" ]; then
 else
   fail "redirectChain field missing from fetch output"
 fi
+
+case_begin "Fetch: file-backed body output replaces bodyBase64"
+TMP_FIXTURE=$(mktemp -d)
+FETCH_OUT_DIR=$(mktemp -d)
+PORT=$(python3 - <<'EOF'
+import socket
+s = socket.socket()
+s.bind(("127.0.0.1", 0))
+print(s.getsockname()[1])
+s.close()
+EOF
+)
+cat > "$TMP_FIXTURE/index.html" <<'EOF'
+<html><head><title>Fixture</title></head><body><h1>Hello bots</h1><p>This body lives on disk.</p></body></html>
+EOF
+python3 -m http.server "$PORT" --bind 127.0.0.1 --directory "$TMP_FIXTURE" >/dev/null 2>&1 &
+SERVER_PID=$!
+sleep 1
+if OUT=$("$REPO_ROOT/scripts/fetch-as-bot.sh" --out-dir "$FETCH_OUT_DIR" "http://127.0.0.1:${PORT}/index.html" "$REPO_ROOT/profiles/googlebot.json" 2>/dev/null); then
+  BODY_FILE=$(printf '%s' "$OUT" | jq -r '.bodyFile // "missing"')
+  BODY_BYTES=$(printf '%s' "$OUT" | jq -r '.bodyBytes // "missing"')
+  HAS_BODY_BASE64=$(printf '%s' "$OUT" | jq 'has("bodyBase64")')
+  if [ "$BODY_FILE" != "missing" ] && [ -f "$FETCH_OUT_DIR/$BODY_FILE" ]; then
+    pass "bodyFile points to an on-disk HTML file"
+    ACTUAL_BYTES=$(wc -c < "$FETCH_OUT_DIR/$BODY_FILE" | tr -d '[:space:]')
+    assert_eq "$BODY_BYTES" "$ACTUAL_BYTES" "bodyBytes matches the saved HTML size"
+  else
+    fail "bodyFile missing or did not resolve under --out-dir"
+  fi
+  assert_ge "$BODY_BYTES" "1" "bodyBytes reports a non-empty fetch body"
+  assert_eq "$HAS_BODY_BASE64" "false" "bodyBase64 field removed from fetch output"
+else
+  fail "fetch-as-bot.sh exited non-zero for file-backed body test"
+fi
+kill "$SERVER_PID" >/dev/null 2>&1 || true
+wait "$SERVER_PID" 2>/dev/null || true
+rm -rf "$TMP_FIXTURE" "$FETCH_OUT_DIR"
 
 # ----- Sprint B: C3 field validation (AC-B1, AC-B2) -----
 
@@ -457,6 +511,37 @@ else
   fail "extract-jsonld.sh exited non-zero on @graph fixture"
 fi
 rm -rf "$TMP_FIXTURE"
+
+case_begin "Install: Claude skill layout still works"
+TMP_HOME=$(mktemp -d)
+if printf 'n\n' | HOME="$TMP_HOME" node "$INSTALLER" install >/dev/null 2>&1; then
+  CLAUDE_INSTALL="$TMP_HOME/.claude/skills/crawl-sim"
+  if [ -f "$CLAUDE_INSTALL/SKILL.md" ] && [ -x "$CLAUDE_INSTALL/scripts/fetch-as-bot.sh" ] && [ -f "$CLAUDE_INSTALL/profiles/googlebot.json" ]; then
+    pass "Claude install writes the expected skill files"
+  else
+    fail "Claude install missing SKILL.md, scripts, or profiles"
+  fi
+else
+  fail "bin/install.js failed for Claude install"
+fi
+rm -rf "$TMP_HOME"
+
+case_begin "Install: Codex plugin layout still works"
+TMP_HOME=$(mktemp -d)
+if printf 'n\n' | HOME="$TMP_HOME" node "$INSTALLER" install --codex >/dev/null 2>&1; then
+  CODEX_PLUGIN="$TMP_HOME/plugins/crawl-sim"
+  MARKETPLACE="$TMP_HOME/.agents/plugins/marketplace.json"
+  HAS_ENTRY=$(jq -r '[.plugins[]? | select(.name=="crawl-sim")] | length' "$MARKETPLACE" 2>/dev/null || echo "0")
+  if [ -f "$CODEX_PLUGIN/.codex-plugin/plugin.json" ] && [ -f "$CODEX_PLUGIN/skills/crawl-sim/SKILL.md" ]; then
+    pass "Codex install writes the plugin and skill tree"
+  else
+    fail "Codex install missing plugin manifest or skill tree"
+  fi
+  assert_eq "$HAS_ENTRY" "1" "Codex install registers one local marketplace entry"
+else
+  fail "bin/install.js failed for Codex install"
+fi
+rm -rf "$TMP_HOME"
 
 # ----- Summary -----
 

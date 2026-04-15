@@ -2,14 +2,45 @@
 set -euo pipefail
 
 # fetch-as-bot.sh — Fetch a URL as a specific bot User-Agent
-# Usage: fetch-as-bot.sh <url> <profile.json>
+# Usage: fetch-as-bot.sh [--out-dir <dir>] <url> <profile.json>
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=_lib.sh
 . "$SCRIPT_DIR/_lib.sh"
 
-URL="${1:?Usage: fetch-as-bot.sh <url> <profile.json>}"
-PROFILE="${2:?Usage: fetch-as-bot.sh <url> <profile.json>}"
+usage() {
+  echo "Usage: fetch-as-bot.sh [--out-dir <dir>] <url> <profile.json>" >&2
+  exit 2
+}
+
+OUT_DIR=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --out-dir)
+      [ $# -ge 2 ] || usage
+      OUT_DIR="$2"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      ;;
+    --)
+      shift
+      break
+      ;;
+    -*)
+      echo "Error: unknown option: $1" >&2
+      usage
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
+
+[ $# -eq 2 ] || usage
+URL="$1"
+PROFILE="$2"
 
 BOT_ID=$(jq -r '.id' "$PROFILE")
 BOT_NAME=$(jq -r '.name' "$PROFILE")
@@ -20,9 +51,9 @@ ROBOTS_ENFORCE=$(jq -r '.robotsTxtEnforceability // "unknown"' "$PROFILE")
 
 TMPDIR="${TMPDIR:-/tmp}"
 HEADERS_FILE=$(mktemp "$TMPDIR/crawlsim-headers.XXXXXX")
-BODY_FILE=$(mktemp "$TMPDIR/crawlsim-body.XXXXXX")
+BODY_TMP_FILE=$(mktemp "$TMPDIR/crawlsim-body.XXXXXX")
 CURL_STDERR_FILE=$(mktemp "$TMPDIR/crawlsim-stderr.XXXXXX")
-trap 'rm -f "$HEADERS_FILE" "$BODY_FILE" "$CURL_STDERR_FILE"' EXIT
+trap 'rm -f "$HEADERS_FILE" "$BODY_TMP_FILE" "$CURL_STDERR_FILE"' EXIT
 
 printf '[%s] fetching %s\n' "$BOT_ID" "$URL" >&2
 
@@ -30,7 +61,7 @@ set +e
 TIMING=$(curl -sS -L \
   -H "User-Agent: $UA" \
   -D "$HEADERS_FILE" \
-  -o "$BODY_FILE" \
+  -o "$BODY_TMP_FILE" \
   -w '%{time_total}\t%{time_starttransfer}\t%{time_connect}\t%{http_code}\t%{size_download}\t%{num_redirects}\t%{url_effective}' \
   --max-time 30 \
   "$URL" 2>"$CURL_STDERR_FILE")
@@ -43,6 +74,12 @@ if [ -s "$CURL_STDERR_FILE" ]; then
 fi
 
 if [ "$CURL_EXIT" -ne 0 ]; then
+  BODY_FILE_JSON=""
+  if [ -n "$OUT_DIR" ]; then
+    mkdir -p "$OUT_DIR"
+    : > "$OUT_DIR/body-$BOT_ID.html"
+    BODY_FILE_JSON="body-$BOT_ID.html"
+  fi
   printf '[%s] FAILED: curl exit %d — %s\n' "$BOT_ID" "$CURL_EXIT" "$CURL_ERR" >&2
   jq -n \
     --arg url "$URL" \
@@ -53,6 +90,7 @@ if [ "$CURL_EXIT" -ne 0 ]; then
     --arg purpose "$PURPOSE" \
     --arg robotsEnforce "$ROBOTS_ENFORCE" \
     --arg error "$CURL_ERR" \
+    --arg bodyFile "$BODY_FILE_JSON" \
     --argjson exitCode "$CURL_EXIT" \
     '{
       url: $url,
@@ -72,7 +110,8 @@ if [ "$CURL_EXIT" -ne 0 ]; then
       size: 0,
       wordCount: 0,
       headers: {},
-      bodyBase64: ""
+      bodyFile: $bodyFile,
+      bodyBytes: 0
     }'
   exit 0
 fi
@@ -111,13 +150,21 @@ if [ "$REDIRECT_COUNT" -gt 0 ]; then
   ')
 fi
 
+if [ -n "$OUT_DIR" ]; then
+  mkdir -p "$OUT_DIR"
+  BODY_FILE="$OUT_DIR/body-$BOT_ID.html"
+  BODY_FILE_JSON="body-$BOT_ID.html"
+else
+  BODY_FILE=$(mktemp "$TMPDIR/crawlsim-body-${BOT_ID}.XXXXXX")
+  BODY_FILE_JSON="$BODY_FILE"
+fi
+mv "$BODY_TMP_FILE" "$BODY_FILE"
+
 WORD_COUNT=$(count_words "$BODY_FILE")
 [ -z "$WORD_COUNT" ] && WORD_COUNT=0
 
-BODY_B64=""
-if [ -s "$BODY_FILE" ]; then
-  BODY_B64=$(base64 < "$BODY_FILE")
-fi
+BODY_BYTES=$(wc -c < "$BODY_FILE" | tr -d '[:space:]')
+[ -z "$BODY_BYTES" ] && BODY_BYTES=0
 
 printf '[%s] ok: status=%s size=%s words=%s time=%ss\n' "$BOT_ID" "$STATUS" "$SIZE" "$WORD_COUNT" "$TOTAL_TIME" >&2
 
@@ -138,7 +185,8 @@ jq -n \
   --argjson redirectCount "$REDIRECT_COUNT" \
   --arg finalUrl "$FINAL_URL" \
   --argjson redirectChain "$REDIRECT_CHAIN" \
-  --arg bodyBase64 "$BODY_B64" \
+  --arg bodyFile "$BODY_FILE_JSON" \
+  --argjson bodyBytes "$BODY_BYTES" \
   '{
     url: $url,
     bot: {
@@ -157,5 +205,6 @@ jq -n \
     finalUrl: $finalUrl,
     redirectChain: $redirectChain,
     headers: $headers,
-    bodyBase64: $bodyBase64
+    bodyFile: $bodyFile,
+    bodyBytes: $bodyBytes
   }'

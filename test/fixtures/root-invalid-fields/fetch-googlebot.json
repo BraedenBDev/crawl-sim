@@ -9,5 +9,6 @@
   "finalUrl": "https://example.com/",
   "redirectChain": [],
   "headers": {},
-  "bodyBase64": ""
+  "bodyFile": "body-googlebot.html",
+  "bodyBytes": 50000
 }

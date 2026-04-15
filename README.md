@@ -5,6 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 [![npm version](https://img.shields.io/npm/v/@braedenbuilds/crawl-sim.svg)](https://www.npmjs.com/package/@braedenbuilds/crawl-sim)
 [![Built for Claude Code](https://img.shields.io/badge/built%20for-Claude%20Code-D97757.svg)](https://claude.com/claude-code)
+[![Works with Codex](https://img.shields.io/badge/works%20with-Codex-111111.svg)](https://developers.openai.com/codex/plugins)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
 
 Google renders your JavaScript. GPTBot, ClaudeBot, and PerplexityBot don't. They read server HTML and move on. If your content lives behind client-side hydration, AI search engines cite your competitors instead of you. Cloudflare blocks AI training crawlers by default on 20% of the web. ChatGPT-User and Perplexity-User ignore robots.txt for user-initiated fetches. Your blocking rules may not be doing what you think.
@@ -14,6 +15,8 @@ Google renders your JavaScript. GPTBot, ClaudeBot, and PerplexityBot don't. They
 This is for developers checking their own sites, agencies who need to show clients the gap with numbers, and SEO teams adding GEO to their toolkit.
 
 Ships as a [Claude Code plugin](https://docs.claude.com/en/docs/claude-code/plugins) and a Codex-compatible local plugin. Scoring, extraction, and validation run in bash, not in your context window. A full audit uses ~2,500 output tokens vs ~10,000+ if the agent wrote the pipeline from scratch each time.
+
+Claude Code and Codex use the same `skills/crawl-sim` shell pipeline. The only difference is install location and invocation syntax.
 
 ---
 
@@ -41,7 +44,8 @@ Or standalone:
 ```bash
 git clone https://github.com/BraedenBDev/crawl-sim.git ~/plugins/crawl-sim
 cd ~/plugins/crawl-sim
-./scripts/fetch-as-bot.sh https://yoursite.com profiles/gptbot.json | jq '{status, wordCount, timing}'
+RUN_DIR=$(mktemp -d)
+./scripts/fetch-as-bot.sh --out-dir "$RUN_DIR" https://yoursite.com profiles/gptbot.json | jq '{status, wordCount, bodyFile, bodyBytes, timing}'
 ```
 
 Requires `curl` + `jq`. The installer will offer to set up Playwright for you, or install it manually with `npx playwright install chromium`. Without it, crawl-sim still runs but all bots score the same on content visibility because there's no JS render comparison. With Playwright, Googlebot gets scored on the full rendered page while AI bots get scored on server HTML only, which is where the interesting findings come from.
@@ -68,6 +72,8 @@ Codex:
 ```
 
 Output: score card, narrative with prioritized fixes, and `crawl-sim-report.json`.
+
+For scripted shell usage, `fetch-as-bot.sh` now writes the HTML body to disk and returns `bodyFile` plus `bodyBytes` in JSON. Pass `--out-dir <run-dir>` when you want deterministic relative body paths for downstream extractors.
 
 Every script is standalone:
 
