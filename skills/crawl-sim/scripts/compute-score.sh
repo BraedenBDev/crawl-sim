@@ -350,9 +350,15 @@ for bot_id in $BOTS; do
   if [ "$ROBOTS_ALLOWED" != "true" ]; then
     # R4 critical-fail: robots blocking overrides accessibility to 0/F
     ACC=0
+  elif [ "$STATUS" != "200" ]; then
+    # Non-200 response: origin blocks the bot regardless of robots.txt permission.
+    # The "robots allowed" credit is meaningless if the bot actually can't fetch.
+    # Cap at the timing bonus only (edge/WAF gave a fast response, but still blocked).
+    TIME_SCORE=$(awk -v t="$TOTAL_TIME" 'BEGIN { if (t < 2) print 20; else if (t < 5) print 10; else print 0 }')
+    ACC=$TIME_SCORE
   else
     ACC=$((ACC + 40))
-    [ "$STATUS" = "200" ] && ACC=$((ACC + 40))
+    ACC=$((ACC + 40))
     TIME_SCORE=$(awk -v t="$TOTAL_TIME" 'BEGIN { if (t < 2) print 20; else if (t < 5) print 10; else print 0 }')
     ACC=$((ACC + TIME_SCORE))
   fi
