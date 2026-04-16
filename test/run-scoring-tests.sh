@@ -684,6 +684,40 @@ kill "$AC8_SERVER_PID" >/dev/null 2>&1 || true
 wait "$AC8_SERVER_PID" 2>/dev/null || true
 rm -rf "$TMP_FIXTURE"
 
+case_begin "Defensive: check-llmstxt top-level exists is true when only llms.txt present"
+TMP_FIXTURE=$(mktemp -d)
+PORT=$(python3 - <<'EOF'
+import socket
+s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()
+EOF
+)
+cat > "$TMP_FIXTURE/llms.txt" <<'EOF'
+# Example Site
+
+> A description.
+
+- [Home](http://127.0.0.1/)
+EOF
+cat > "$TMP_FIXTURE/index.html" <<'EOF'
+hello
+EOF
+python3 -m http.server "$PORT" --bind 127.0.0.1 --directory "$TMP_FIXTURE" >/dev/null 2>&1 &
+LLMS_ONLY_PID=$!
+sleep 1
+if OUT=$("$CHECK_LLMSTXT" "http://127.0.0.1:${PORT}/" 2>/dev/null); then
+  TOP_EXISTS=$(printf '%s' "$OUT" | jq -r '.exists')
+  LLMS_EXISTS=$(printf '%s' "$OUT" | jq -r '.llmsTxt.exists')
+  LLMS_FULL_EXISTS=$(printf '%s' "$OUT" | jq -r '.llmsFullTxt.exists')
+  assert_eq "$LLMS_EXISTS" "true" "llms.txt detected"
+  assert_eq "$LLMS_FULL_EXISTS" "false" "llms-full.txt absent"
+  assert_eq "$TOP_EXISTS" "true" "top-level exists is true when only llms.txt is served"
+else
+  fail "check-llmstxt.sh exited non-zero against llms-only server"
+fi
+kill "$LLMS_ONLY_PID" >/dev/null 2>&1 || true
+wait "$LLMS_ONLY_PID" 2>/dev/null || true
+rm -rf "$TMP_FIXTURE"
+
 case_begin "AC-5: diff-render.sh surfaces Playwright error detail in skip reason"
 TMP_FIXTURE=$(mktemp -d)
 PORT=$(python3 - <<'EOF'
