@@ -10,9 +10,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 URL="${1:?Usage: check-sitemap.sh <url>}"
 printf '[check-sitemap] %s\n' "$URL" >&2
-# Follow redirects to find the canonical origin before probing /sitemap.xml.
-# A site that canonicalizes to www (or vice versa) would otherwise miss its
-# sitemap entirely, and containsTarget would compare against the wrong host.
 CANONICAL_URL=$(canonical_url "$URL")
 ORIGIN=$(origin_from_url "$CANONICAL_URL")
 SITEMAP_URL="${ORIGIN}/sitemap.xml"

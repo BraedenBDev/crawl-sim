@@ -13,8 +13,6 @@ UA_TOKEN="${2:?Usage: check-robots.sh <url> <ua-token>}"
 
 printf '[check-robots] %s for %s\n' "$URL" "$UA_TOKEN" >&2
 
-# Resolve canonical origin so sites that canonicalize across hosts
-# (bare <-> www) report the robots.txt URL they actually served.
 CANONICAL_URL=$(canonical_url "$URL")
 ORIGIN=$(origin_from_url "$CANONICAL_URL")
 URL_PATH=$(path_from_url "$URL")
