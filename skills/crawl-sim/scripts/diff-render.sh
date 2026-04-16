@@ -23,6 +23,7 @@ emit_skipped() {
       reason: $reason,
       serverWordCount: null,
       renderedWordCount: null,
+      deltaWords: null,
       deltaPct: null,
       significantDelta: null
     }'
@@ -114,7 +115,8 @@ node -e "
 RENDERED_WORDS=$(count_words "$RENDERED_HTML")
 [ -z "$RENDERED_WORDS" ] && RENDERED_WORDS=0
 
-# Compute delta percentage (rendered vs server)
+# Compute deltas (rendered - server)
+DELTA_WORDS=$((RENDERED_WORDS - SERVER_WORDS))
 DELTA_PCT=0
 SIGNIFICANT=false
 if [ "$SERVER_WORDS" -gt 0 ]; then
@@ -134,6 +136,7 @@ jq -n \
   --arg url "$URL" \
   --argjson serverWords "$SERVER_WORDS" \
   --argjson renderedWords "$RENDERED_WORDS" \
+  --argjson deltaWords "$DELTA_WORDS" \
   --argjson deltaPct "$DELTA_PCT" \
   --argjson significant "$SIGNIFICANT" \
   '{
@@ -141,6 +144,7 @@ jq -n \
     skipped: false,
     serverWordCount: $serverWords,
     renderedWordCount: $renderedWords,
+    deltaWords: $deltaWords,
     deltaPct: $deltaPct,
     significantDelta: $significant,
     interpretation: (
