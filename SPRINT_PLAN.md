@@ -105,14 +105,19 @@ Items deferred to future releases:
 
 ## Progress Log
 
-Updated after each criterion completes.
+- [x] AC-1 sitemap canonical-host — `e14003a`
+- [x] AC-2 robots + llms canonical-host — `e332310`
+- [x] AC-3 compare tie bug — `c9043bc`
+- [x] AC-4 fixture drift — `a507b30`
+- [x] AC-5 render-diff error surfacing — `9945795`
+- [x] AC-6 stage-3 orchestration — `52ab20e`
+- [x] AC-7 trap leak — `4ad2286`
+- [x] AC-8 deltaWords schema — `2194666`
+- [x] AC-9 version bump 1.5.0 — across commits
 
-- [ ] AC-1 sitemap canonical-host
-- [ ] AC-2 robots + llms canonical-host
-- [ ] AC-3 compare tie bug
-- [ ] AC-4 fixture drift
-- [ ] AC-5 render-diff error surfacing
-- [ ] AC-6 stage-3 orchestration
-- [ ] AC-7 trap leak
-- [ ] AC-8 deltaWords schema
-- [ ] AC-9 version bump + release commit
+Review pass additions:
+- Defensive regression test: check-llmstxt with only llms.txt served
+- UTF-8-safe stderr truncation in diff-render.sh
+- Extracted `free_port` / `wait_for_port` / `start_redirect_server` / `make_node_shim` test helpers (removed ~150 lines of duplication)
+
+Final: **104 tests pass, 0 failures.** Full suite runs in ~17s.
