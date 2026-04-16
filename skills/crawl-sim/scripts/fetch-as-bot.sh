@@ -159,6 +159,10 @@ else
   BODY_FILE_JSON="$BODY_FILE"
 fi
 mv "$BODY_TMP_FILE" "$BODY_FILE"
+# The temp file has been moved; clear the variable so the EXIT trap
+# does not try to rm it on a cross-device --out-dir where mv copied
+# and unlinked the source.
+BODY_TMP_FILE=""
 
 WORD_COUNT=$(count_words "$BODY_FILE")
 [ -z "$WORD_COUNT" ] && WORD_COUNT=0
