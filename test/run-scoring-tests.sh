@@ -511,20 +511,36 @@ case_begin "AC-4: fetch fixtures match docs/output-schemas.md"
 FIXTURE_SCHEMA_OK=1
 for fixture in "$SCRIPT_DIR/fixtures/"*/fetch-*.json; do
   name="${fixture#$SCRIPT_DIR/fixtures/}"
-  # Required fields per output-schemas.md
+  # Always required (both success and fetchFailed)
   HAS_TTFB=$(jq 'has("timing") and (.timing | has("ttfb"))' "$fixture")
   HAS_TOTAL=$(jq 'has("timing") and (.timing | has("total"))' "$fixture")
   HAS_UA=$(jq '.bot | has("userAgent")' "$fixture")
-  HAS_REDIRECT_COUNT=$(jq 'has("redirectCount")' "$fixture")
   HAS_HEADERS=$(jq 'has("headers")' "$fixture")
-  # Forbidden legacy fields
+  # Always forbidden (legacy/never-emitted fields)
   HAS_FIRSTBYTE=$(jq '.timing | has("firstByte")' "$fixture")
   HAS_CONNECT=$(jq '.timing | has("connect")' "$fixture")
   HAS_TOKEN=$(jq '.bot | has("robotsTxtToken")' "$fixture")
-  if [ "$HAS_TTFB" != "true" ] || [ "$HAS_TOTAL" != "true" ] || [ "$HAS_UA" != "true" ] \
-      || [ "$HAS_REDIRECT_COUNT" != "true" ] || [ "$HAS_HEADERS" != "true" ] \
-      || [ "$HAS_FIRSTBYTE" = "true" ] || [ "$HAS_CONNECT" = "true" ] || [ "$HAS_TOKEN" = "true" ]; then
-    fail "fixture $name drifts from schema"
+  # Success path also requires redirectCount + redirectChain
+  IS_FAILED=$(jq '.fetchFailed // false' "$fixture")
+  NEEDS_REDIRECTS="true"
+  if [ "$IS_FAILED" = "true" ]; then NEEDS_REDIRECTS="false"; fi
+  HAS_RC=$(jq 'has("redirectCount")' "$fixture")
+  HAS_RCHAIN=$(jq 'has("redirectChain")' "$fixture")
+  MISSING=""
+  [ "$HAS_TTFB" = "true" ] || MISSING="$MISSING timing.ttfb"
+  [ "$HAS_TOTAL" = "true" ] || MISSING="$MISSING timing.total"
+  [ "$HAS_UA" = "true" ] || MISSING="$MISSING bot.userAgent"
+  [ "$HAS_HEADERS" = "true" ] || MISSING="$MISSING headers"
+  if [ "$NEEDS_REDIRECTS" = "true" ]; then
+    [ "$HAS_RC" = "true" ] || MISSING="$MISSING redirectCount"
+    [ "$HAS_RCHAIN" = "true" ] || MISSING="$MISSING redirectChain"
+  fi
+  FORBIDDEN=""
+  [ "$HAS_FIRSTBYTE" = "true" ] && FORBIDDEN="$FORBIDDEN timing.firstByte"
+  [ "$HAS_CONNECT" = "true" ] && FORBIDDEN="$FORBIDDEN timing.connect"
+  [ "$HAS_TOKEN" = "true" ] && FORBIDDEN="$FORBIDDEN bot.robotsTxtToken"
+  if [ -n "$MISSING" ] || [ -n "$FORBIDDEN" ]; then
+    fail "fixture $name drifts from schema — missing:$MISSING forbidden:$FORBIDDEN"
     FIXTURE_SCHEMA_OK=0
   fi
 done
