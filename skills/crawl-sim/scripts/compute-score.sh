@@ -269,6 +269,7 @@ CAT_N=0
 
 OVERALL_WEIGHTED_SUM=0
 OVERALL_WEIGHT_TOTAL=0
+FAILED_WEIGHTED_BOTS=""
 
 for bot_id in $BOTS; do
   FETCH="$RESULTS_DIR/fetch-$bot_id.json"
@@ -309,6 +310,14 @@ for bot_id in $BOTS; do
     BOTS_JSON=$(printf '%s' "$BOTS_JSON" | jq --argjson bot "$BOT_OBJ" --arg id "$bot_id" '.[$id] = $bot')
     printf '[compute-score] %s: fetch failed, scoring as F\n' "$bot_id" >&2
     CAT_N=$((CAT_N + 1))
+    # A failed weighted bot (googlebot/gptbot/claudebot/perplexitybot) must
+    # still count against the composite denominator so the headline score
+    # reflects the outage. BOT_SCORE=0 contributes nothing to the numerator.
+    W=$(overall_weight "$bot_id")
+    if [ "$W" -gt 0 ]; then
+      OVERALL_WEIGHT_TOTAL=$((OVERALL_WEIGHT_TOTAL + W))
+      FAILED_WEIGHTED_BOTS="$FAILED_WEIGHTED_BOTS $bot_id"
+    fi
     continue
   fi
 
@@ -709,6 +718,16 @@ fi
 
 # --- Warnings (H2) ---
 WARNINGS="[]"
+if [ -n "$FAILED_WEIGHTED_BOTS" ]; then
+  FAILED_LIST=$(printf '%s' "$FAILED_WEIGHTED_BOTS" | awk '{$1=$1;print}' | tr ' ' '\n' | jq -R . | jq -s .)
+  WARNINGS=$(printf '%s' "$WARNINGS" | jq --argjson bots "$FAILED_LIST" \
+    '. + [{
+      code: "weighted_bot_fetch_failed",
+      severity: "high",
+      message: "One or more weighted bots failed to fetch the page. The overall composite reflects this as a zero-score contribution, so the headline may be lower than it would be for an ideal run.",
+      bots: $bots
+    }]')
+fi
 if [ "$DIFF_AVAILABLE" != "true" ]; then
   DIFF_REASON="not_found"
   if [ -f "$DIFF_RENDER_FILE" ]; then
