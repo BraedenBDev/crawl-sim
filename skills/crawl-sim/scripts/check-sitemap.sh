@@ -10,7 +10,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 URL="${1:?Usage: check-sitemap.sh <url>}"
 printf '[check-sitemap] %s\n' "$URL" >&2
-ORIGIN=$(origin_from_url "$URL")
+# Follow redirects to find the canonical origin before probing /sitemap.xml.
+# A site that canonicalizes to www (or vice versa) would otherwise miss its
+# sitemap entirely, and containsTarget would compare against the wrong host.
+CANONICAL_URL=$(canonical_url "$URL")
+ORIGIN=$(origin_from_url "$CANONICAL_URL")
 SITEMAP_URL="${ORIGIN}/sitemap.xml"
 
 TMPDIR="${TMPDIR:-/tmp}"
@@ -50,12 +54,18 @@ if [ "$HTTP_STATUS" = "200" ] && [ -s "$SITEMAP_FILE" ]; then
         | head -10 \
         | jq -R . | jq -s .)
 
-      # Check if target URL appears anywhere in the sitemap
-      # Match both with and without trailing slash
+      # Check if target URL appears anywhere in the sitemap.
+      # Compare against both raw input and canonical URL so sites that
+      # canonicalize across hosts (bare <-> www) still match.
       URL_NO_TRAILING=$(printf '%s' "$URL" | sed -E 's#/$##')
-      if grep -qF "$URL_NO_TRAILING<" "$SITEMAP_FILE" || grep -qF "${URL_NO_TRAILING}/<" "$SITEMAP_FILE"; then
-        CONTAINS_TARGET=true
-      fi
+      CANONICAL_NO_TRAILING=$(printf '%s' "$CANONICAL_URL" | sed -E 's#/$##')
+      for candidate in "$URL_NO_TRAILING" "$CANONICAL_NO_TRAILING"; do
+        [ -z "$candidate" ] && continue
+        if grep -qF "$candidate<" "$SITEMAP_FILE" || grep -qF "${candidate}/<" "$SITEMAP_FILE"; then
+          CONTAINS_TARGET=true
+          break
+        fi
+      done
 
       # Has lastmod dates?
       if grep -qi '<lastmod>' "$SITEMAP_FILE"; then
