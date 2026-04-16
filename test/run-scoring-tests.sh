@@ -576,6 +576,47 @@ kill "$SERVER_PID" >/dev/null 2>&1 || true
 wait "$SERVER_PID" 2>/dev/null || true
 rm -rf "$TMP_FIXTURE"
 
+case_begin "Issue #27: overall composite includes fetchFailed weighted bots"
+TMP_FIXTURE=$(mktemp -d)
+cp "$SCRIPT_DIR/fixtures/root-minimal/"*.json "$TMP_FIXTURE/"
+# Add a weighted bot (perplexitybot, weight 20) that failed to fetch.
+cat > "$TMP_FIXTURE/fetch-perplexitybot.json" <<'EOF'
+{
+  "url": "https://example.com/",
+  "bot": {
+    "id": "perplexitybot",
+    "name": "PerplexityBot",
+    "userAgent": "Mozilla/5.0 (compatible; PerplexityBot/1.0; +https://www.perplexity.ai/bot)",
+    "rendersJavaScript": false
+  },
+  "fetchFailed": true,
+  "error": "curl: (28) Connection timed out after 29992 milliseconds",
+  "curlExitCode": 28,
+  "status": 0,
+  "timing": { "total": 0, "ttfb": 0 },
+  "size": 0,
+  "wordCount": 0,
+  "headers": {},
+  "bodyFile": "",
+  "bodyBytes": 0
+}
+EOF
+if OUT=$("$COMPUTE_SCORE" "$TMP_FIXTURE" 2>/dev/null); then
+  PERP_SCORE=$(printf '%s' "$OUT" | jq -r '.bots.perplexitybot.score')
+  PERP_FAILED=$(printf '%s' "$OUT" | jq -r '.bots.perplexitybot.fetchFailed')
+  OVERALL=$(printf '%s' "$OUT" | jq -r '.overall.score')
+  WARN_COUNT=$(printf '%s' "$OUT" | jq '[.warnings[]? | select(.code=="weighted_bot_fetch_failed")] | length')
+  assert_eq "$PERP_FAILED" "true" "failed bot still reports fetchFailed"
+  assert_eq "$PERP_SCORE" "0" "failed bot scores 0"
+  # googlebot (weight 40) is the only successful weighted bot; perplexitybot
+  # weight 20 must still count against the denominator. Expected: 100*40/60 = 66.
+  assert_lt "$OVERALL" "90" "overall composite drops when a weighted bot fetch fails"
+  assert_ge "$WARN_COUNT" "1" "warnings surface weighted_bot_fetch_failed"
+else
+  fail "compute-score.sh exited non-zero on mixed-fetchFailed fixture"
+fi
+rm -rf "$TMP_FIXTURE"
+
 case_begin "AC-4: fetch fixtures match docs/output-schemas.md"
 FIXTURE_SCHEMA_OK=1
 for fixture in "$SCRIPT_DIR/fixtures/"*/fetch-*.json; do
