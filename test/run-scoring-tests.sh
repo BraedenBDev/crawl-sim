@@ -606,6 +606,47 @@ wait "$REDIR_PID" 2>/dev/null || true
 wait "$SITEMAP_PID" 2>/dev/null || true
 rm -rf "$TMP_FIXTURE"
 
+case_begin "AC-5: diff-render.sh surfaces Playwright error detail in skip reason"
+TMP_FIXTURE=$(mktemp -d)
+PORT=$(python3 - <<'EOF'
+import socket
+s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()
+EOF
+)
+echo "<html><body>hi</body></html>" > "$TMP_FIXTURE/index.html"
+python3 -m http.server "$PORT" --bind 127.0.0.1 --directory "$TMP_FIXTURE" >/dev/null 2>&1 &
+AC5_SERVER_PID=$!
+sleep 1
+# Shim `node` so the render invocation writes a specific stderr and exits 1,
+# while the availability probe is delegated to real node.
+mkdir -p "$TMP_FIXTURE/bin"
+REAL_NODE=$(command -v node)
+cat > "$TMP_FIXTURE/bin/node" <<NODESHIM
+#!/usr/bin/env bash
+# Delegate --version and non-inline calls
+if [ "\$#" -lt 2 ] || [ "\$1" != "-e" ]; then
+  exec "$REAL_NODE" "\$@"
+fi
+# The availability probe has exactly 2 args (-e + inline script); render has 4.
+if [ "\$#" -eq 2 ]; then
+  exec "$REAL_NODE" "\$@"
+fi
+echo "browserType.launch: Executable doesn't exist at /tmp/fake/chromium" >&2
+exit 1
+NODESHIM
+chmod +x "$TMP_FIXTURE/bin/node"
+if OUT=$(PATH="$TMP_FIXTURE/bin:$PATH" "$DIFF_RENDER" "http://127.0.0.1:${PORT}/" 2>/dev/null); then
+  SKIPPED=$(printf '%s' "$OUT" | jq -r '.skipped')
+  REASON=$(printf '%s' "$OUT" | jq -r '.reason')
+  assert_eq "$SKIPPED" "true" "forced render failure still produces skipped:true"
+  assert_contains "$REASON" "Executable doesn't exist" "skip reason surfaces Playwright error detail"
+else
+  fail "diff-render.sh exited non-zero under forced render failure"
+fi
+kill "$AC5_SERVER_PID" >/dev/null 2>&1 || true
+wait "$AC5_SERVER_PID" 2>/dev/null || true
+rm -rf "$TMP_FIXTURE"
+
 case_begin "AC-2: check-robots.sh follows redirects to canonical host"
 TMP_FIXTURE=$(mktemp -d)
 PORT_A=$(python3 - <<'EOF'
