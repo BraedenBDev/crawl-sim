@@ -89,15 +89,16 @@ canonical_url() {
 }
 
 # Fetch a URL to a local file and return the HTTP status code on stdout.
-# Usage: status=$(fetch_to_file <url> <output-file> [timeout-seconds])
-# Retries once on transient failure (same SSL/DNS flake that caused #11).
+# Usage: status=$(fetch_to_file <url> <output-file> [timeout-seconds] [retry-timeout-seconds])
+# Retries once on transient failure. The retry uses a shorter timeout so that
+# a hung endpoint does not stall the whole stage for 2x the initial timeout.
 fetch_to_file() {
   local url="$1"
   local out="$2"
   local timeout="${3:-15}"
+  local retry_timeout="${4:-10}"
   local status
   status=$(curl -sS -L -o "$out" -w '%{http_code}' --max-time "$timeout" "$url" 2>/dev/null) && echo "$status" && return
-  # Retry once on transient failure
-  status=$(curl -sS -L -o "$out" -w '%{http_code}' --max-time "$timeout" "$url" 2>/dev/null) && echo "$status" && return
+  status=$(curl -sS -L -o "$out" -w '%{http_code}' --max-time "$retry_timeout" "$url" 2>/dev/null) && echo "$status" && return
   echo "000"
 }
