@@ -548,6 +548,111 @@ wait "$REDIR_PID" 2>/dev/null || true
 wait "$SITEMAP_PID" 2>/dev/null || true
 rm -rf "$TMP_FIXTURE"
 
+case_begin "AC-2: check-robots.sh follows redirects to canonical host"
+TMP_FIXTURE=$(mktemp -d)
+PORT_A=$(python3 - <<'EOF'
+import socket
+s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()
+EOF
+)
+PORT_B=$(python3 - <<'EOF'
+import socket
+s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()
+EOF
+)
+cat > "$TMP_FIXTURE/redirect_server.py" <<PY
+import http.server, socketserver, sys
+PORT_A = int(sys.argv[1]); PORT_B = int(sys.argv[2])
+class H(http.server.BaseHTTPRequestHandler):
+  def do_GET(self): self._r()
+  def do_HEAD(self): self._r()
+  def _r(self):
+    self.send_response(301)
+    self.send_header('Location', f'http://127.0.0.1:{PORT_B}' + self.path)
+    self.end_headers()
+  def log_message(self, *a): pass
+with socketserver.TCPServer(('127.0.0.1', PORT_A), H) as s: s.serve_forever()
+PY
+mkdir -p "$TMP_FIXTURE/b"
+cat > "$TMP_FIXTURE/b/robots.txt" <<'EOF'
+User-agent: GPTBot
+Disallow: /
+EOF
+cat > "$TMP_FIXTURE/b/index.html" <<'EOF'
+hello
+EOF
+python3 "$TMP_FIXTURE/redirect_server.py" "$PORT_A" "$PORT_B" >/dev/null 2>&1 &
+REDIR_PID=$!
+( cd "$TMP_FIXTURE/b" && python3 -m http.server "$PORT_B" --bind 127.0.0.1 ) >/dev/null 2>&1 &
+ROBOTS_PID=$!
+sleep 1
+if OUT=$("$CHECK_ROBOTS" "http://127.0.0.1:${PORT_A}/index.html" "GPTBot" 2>/dev/null); then
+  ALLOWED=$(printf '%s' "$OUT" | jq -r '.allowed')
+  REPORTED_URL=$(printf '%s' "$OUT" | jq -r '.robotsUrl')
+  assert_eq "$ALLOWED" "false" "robots.txt discovered via canonical redirect still blocks GPTBot"
+  assert_contains "$REPORTED_URL" "127.0.0.1:${PORT_B}" "robotsUrl reports canonical origin, not raw input"
+else
+  fail "check-robots.sh exited non-zero against redirecting host"
+fi
+kill "$REDIR_PID" "$ROBOTS_PID" >/dev/null 2>&1 || true
+wait "$REDIR_PID" 2>/dev/null || true
+wait "$ROBOTS_PID" 2>/dev/null || true
+rm -rf "$TMP_FIXTURE"
+
+case_begin "AC-2: check-llmstxt.sh follows redirects to canonical host"
+TMP_FIXTURE=$(mktemp -d)
+PORT_A=$(python3 - <<'EOF'
+import socket
+s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()
+EOF
+)
+PORT_B=$(python3 - <<'EOF'
+import socket
+s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()
+EOF
+)
+cat > "$TMP_FIXTURE/redirect_server.py" <<PY
+import http.server, socketserver, sys
+PORT_A = int(sys.argv[1]); PORT_B = int(sys.argv[2])
+class H(http.server.BaseHTTPRequestHandler):
+  def do_GET(self): self._r()
+  def do_HEAD(self): self._r()
+  def _r(self):
+    self.send_response(301)
+    self.send_header('Location', f'http://127.0.0.1:{PORT_B}' + self.path)
+    self.end_headers()
+  def log_message(self, *a): pass
+with socketserver.TCPServer(('127.0.0.1', PORT_A), H) as s: s.serve_forever()
+PY
+mkdir -p "$TMP_FIXTURE/b"
+cat > "$TMP_FIXTURE/b/llms.txt" <<'EOF'
+# Example Site
+
+> A short description of the site.
+
+- [Home](http://127.0.0.1/)
+EOF
+cat > "$TMP_FIXTURE/b/index.html" <<'EOF'
+hello
+EOF
+python3 "$TMP_FIXTURE/redirect_server.py" "$PORT_A" "$PORT_B" >/dev/null 2>&1 &
+REDIR_PID=$!
+( cd "$TMP_FIXTURE/b" && python3 -m http.server "$PORT_B" --bind 127.0.0.1 ) >/dev/null 2>&1 &
+LLMS_PID=$!
+sleep 1
+if OUT=$("$CHECK_LLMSTXT" "http://127.0.0.1:${PORT_A}/" 2>/dev/null); then
+  LLMS_EXISTS=$(printf '%s' "$OUT" | jq -r '.llmsTxt.exists')
+  LLMS_URL=$(printf '%s' "$OUT" | jq -r '.llmsTxt.url')
+  assert_eq "$LLMS_EXISTS" "true" "llms.txt discovered via canonical redirect"
+  assert_contains "$LLMS_URL" "127.0.0.1:${PORT_B}" "llmsTxt.url reports canonical origin, not raw input"
+else
+  fail "check-llmstxt.sh exited non-zero against redirecting host"
+fi
+kill "$REDIR_PID" "$LLMS_PID" >/dev/null 2>&1 || true
+wait "$REDIR_PID" 2>/dev/null || true
+wait "$LLMS_PID" 2>/dev/null || true
+rm -rf "$TMP_FIXTURE"
+
 case_begin "Structured data: invalid @graph members trigger required-field violations"
 TMP_FIXTURE=$(mktemp -d)
 cp "$SCRIPT_DIR/fixtures/root-minimal/fetch-googlebot.json" "$TMP_FIXTURE/"
