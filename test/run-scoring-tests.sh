@@ -507,6 +507,31 @@ kill "$SERVER_PID" >/dev/null 2>&1 || true
 wait "$SERVER_PID" 2>/dev/null || true
 rm -rf "$TMP_FIXTURE"
 
+case_begin "AC-4: fetch fixtures match docs/output-schemas.md"
+FIXTURE_SCHEMA_OK=1
+for fixture in "$SCRIPT_DIR/fixtures/"*/fetch-*.json; do
+  name="${fixture#$SCRIPT_DIR/fixtures/}"
+  # Required fields per output-schemas.md
+  HAS_TTFB=$(jq 'has("timing") and (.timing | has("ttfb"))' "$fixture")
+  HAS_TOTAL=$(jq 'has("timing") and (.timing | has("total"))' "$fixture")
+  HAS_UA=$(jq '.bot | has("userAgent")' "$fixture")
+  HAS_REDIRECT_COUNT=$(jq 'has("redirectCount")' "$fixture")
+  HAS_HEADERS=$(jq 'has("headers")' "$fixture")
+  # Forbidden legacy fields
+  HAS_FIRSTBYTE=$(jq '.timing | has("firstByte")' "$fixture")
+  HAS_CONNECT=$(jq '.timing | has("connect")' "$fixture")
+  HAS_TOKEN=$(jq '.bot | has("robotsTxtToken")' "$fixture")
+  if [ "$HAS_TTFB" != "true" ] || [ "$HAS_TOTAL" != "true" ] || [ "$HAS_UA" != "true" ] \
+      || [ "$HAS_REDIRECT_COUNT" != "true" ] || [ "$HAS_HEADERS" != "true" ] \
+      || [ "$HAS_FIRSTBYTE" = "true" ] || [ "$HAS_CONNECT" = "true" ] || [ "$HAS_TOKEN" = "true" ]; then
+    fail "fixture $name drifts from schema"
+    FIXTURE_SCHEMA_OK=0
+  fi
+done
+if [ "$FIXTURE_SCHEMA_OK" = "1" ]; then
+  pass "all fetch-*.json fixtures match docs/output-schemas.md"
+fi
+
 case_begin "AC-1: check-sitemap.sh follows redirects to canonical host"
 TMP_FIXTURE=$(mktemp -d)
 # Pick two free ports
