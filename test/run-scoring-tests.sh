@@ -419,6 +419,23 @@ else
 fi
 rm -rf "$TMP_FIXTURE"
 
+case_begin "AC-3: compare report does not mark a winner on tied scores"
+TMP_FIXTURE=$(mktemp -d)
+cp "$SCRIPT_DIR/fixtures/root-minimal/"*.json "$TMP_FIXTURE/"
+"$COMPUTE_SCORE" "$TMP_FIXTURE" > "$TMP_FIXTURE/score.json" 2>/dev/null
+if "$BUILD_REPORT" "$TMP_FIXTURE" > "$TMP_FIXTURE/a.json" 2>/dev/null; then
+  cp "$TMP_FIXTURE/a.json" "$TMP_FIXTURE/b.json"
+  if HTML=$("$GENERATE_COMPARE_HTML" "$TMP_FIXTURE/a.json" "$TMP_FIXTURE/b.json" 2>/dev/null); then
+    WINNER_COUNT=$(printf '%s' "$HTML" | grep -cE 'site-card winner' || true)
+    assert_eq "$WINNER_COUNT" "0" "neither card is marked winner when scores tie"
+  else
+    fail "generate-compare-html.sh exited non-zero on tied reports"
+  fi
+else
+  fail "build-report.sh exited non-zero while preparing tie fixture"
+fi
+rm -rf "$TMP_FIXTURE"
+
 case_begin "Report: generate-compare-html.sh succeeds on two valid reports"
 TMP_FIXTURE=$(mktemp -d)
 cp "$SCRIPT_DIR/fixtures/root-minimal/"*.json "$TMP_FIXTURE/"
