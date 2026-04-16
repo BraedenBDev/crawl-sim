@@ -638,6 +638,52 @@ wait "$HANG_PID" 2>/dev/null || true
 rm -f "$OUT_FILE"
 rm -rf "$TMP_FIXTURE"
 
+case_begin "AC-8: diff-render.sh emits deltaWords on success"
+TMP_FIXTURE=$(mktemp -d)
+PORT=$(python3 - <<'EOF'
+import socket
+s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()
+EOF
+)
+# Server HTML with 3 words
+echo "<html><body>one two three</body></html>" > "$TMP_FIXTURE/index.html"
+python3 -m http.server "$PORT" --bind 127.0.0.1 --directory "$TMP_FIXTURE" >/dev/null 2>&1 &
+AC8_SERVER_PID=$!
+sleep 1
+# Shim node: availability probe delegates to real node; render writes
+# a known HTML with 8 words to the output file and exits 0.
+mkdir -p "$TMP_FIXTURE/bin"
+REAL_NODE=$(command -v node)
+cat > "$TMP_FIXTURE/bin/node" <<NODESHIM
+#!/usr/bin/env bash
+if [ "\$#" -lt 2 ] || [ "\$1" != "-e" ]; then
+  exec "$REAL_NODE" "\$@"
+fi
+if [ "\$#" -eq 2 ]; then
+  exec "$REAL_NODE" "\$@"
+fi
+cat > "\$4" <<'HTMLEOF'
+<html><body>alpha beta gamma delta epsilon zeta eta theta</body></html>
+HTMLEOF
+exit 0
+NODESHIM
+chmod +x "$TMP_FIXTURE/bin/node"
+if OUT=$(PATH="$TMP_FIXTURE/bin:$PATH" "$DIFF_RENDER" "http://127.0.0.1:${PORT}/" 2>/dev/null); then
+  SKIPPED=$(printf '%s' "$OUT" | jq -r '.skipped')
+  SERVER_WC=$(printf '%s' "$OUT" | jq -r '.serverWordCount')
+  RENDERED_WC=$(printf '%s' "$OUT" | jq -r '.renderedWordCount')
+  DELTA_WORDS=$(printf '%s' "$OUT" | jq -r '.deltaWords')
+  assert_eq "$SKIPPED" "false" "success path sets skipped:false"
+  assert_eq "$SERVER_WC" "3" "serverWordCount reflects server HTML"
+  assert_eq "$RENDERED_WC" "8" "renderedWordCount reflects shimmed render"
+  assert_eq "$DELTA_WORDS" "5" "deltaWords = rendered - server"
+else
+  fail "diff-render.sh exited non-zero in success path"
+fi
+kill "$AC8_SERVER_PID" >/dev/null 2>&1 || true
+wait "$AC8_SERVER_PID" 2>/dev/null || true
+rm -rf "$TMP_FIXTURE"
+
 case_begin "AC-5: diff-render.sh surfaces Playwright error detail in skip reason"
 TMP_FIXTURE=$(mktemp -d)
 PORT=$(python3 - <<'EOF'
