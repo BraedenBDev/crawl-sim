@@ -7,7 +7,7 @@ set -eu
 REPORT_A="${1:?Usage: generate-compare-html.sh <report-a.json> <report-b.json> [output.html]}"
 REPORT_B="${2:?Usage: generate-compare-html.sh <report-a.json> <report-b.json> [output.html]}"
 OUTPUT="${3:-}"
-REPORT_VERSION="1.5.0"
+REPORT_VERSION="1.5.1"
 
 for f in "$REPORT_A" "$REPORT_B"; do
   [ -f "$f" ] || { echo "Error: report not found: $f" >&2; exit 1; }
