@@ -56,7 +56,8 @@ fi
 TMPDIR="${TMPDIR:-/tmp}"
 SERVER_HTML=$(mktemp "$TMPDIR/crawlsim-server.XXXXXX")
 RENDERED_HTML=$(mktemp "$TMPDIR/crawlsim-rendered.XXXXXX")
-trap 'rm -f "$SERVER_HTML" "$RENDERED_HTML"' EXIT
+RENDER_STDERR=$(mktemp "$TMPDIR/crawlsim-render-stderr.XXXXXX")
+trap 'rm -f "$SERVER_HTML" "$RENDERED_HTML" "$RENDER_STDERR"' EXIT
 
 # Fetch server HTML with Googlebot UA
 UA="Mozilla/5.0 (Linux; Android 6.0.1; Nexus 5X Build/MMB29P) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)"
@@ -99,8 +100,15 @@ node -e "
   console.error('RENDER_ERROR:', err.message);
   process.exit(1);
 });
-" "$URL" "$RENDERED_HTML" 2>/dev/null || {
-  emit_skipped "playwright render failed"
+" "$URL" "$RENDERED_HTML" 2>"$RENDER_STDERR" || {
+  # Surface the first line of Playwright's stderr so the caller can
+  # distinguish a launch failure from a navigation timeout from a page bug.
+  DETAIL=$(head -c 500 "$RENDER_STDERR" | tr '\n' ' ' | sed -E 's/[[:space:]]+/ /g; s/^RENDER_ERROR: //; s/^ +//; s/ +$//')
+  if [ -n "$DETAIL" ]; then
+    emit_skipped "playwright render failed: $DETAIL"
+  else
+    emit_skipped "playwright render failed"
+  fi
 }
 
 RENDERED_WORDS=$(count_words "$RENDERED_HTML")
