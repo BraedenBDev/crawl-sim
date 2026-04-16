@@ -100,6 +100,75 @@ run_score() {
   "$COMPUTE_SCORE" "$@" "$fx"
 }
 
+# Pick a free TCP port on 127.0.0.1.
+free_port() {
+  python3 - <<'EOF'
+import socket
+s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()
+EOF
+}
+
+# Block until a local port responds to HTTP, up to ~2s.
+# Much faster than a flat `sleep 1` on fast machines and more reliable on slow ones.
+wait_for_port() {
+  local port="$1"
+  local i=0
+  while [ "$i" -lt 40 ]; do
+    if curl -sf -o /dev/null --max-time 1 "http://127.0.0.1:${port}/" 2>/dev/null; then
+      return 0
+    fi
+    i=$((i + 1))
+    sleep 0.05
+  done
+  return 1
+}
+
+# Start a Python redirect server on $1 that sends 301 Location:
+# http://127.0.0.1:$2<path> for every request.
+# Writes the server script into $3 and backgrounds it; echoes the PID.
+start_redirect_server() {
+  local port_a="$1"
+  local port_b="$2"
+  local dir="$3"
+  cat > "$dir/redirect_server.py" <<'PY'
+import http.server, socketserver, sys
+PORT_A = int(sys.argv[1]); PORT_B = int(sys.argv[2])
+class H(http.server.BaseHTTPRequestHandler):
+  def do_GET(self): self._r()
+  def do_HEAD(self): self._r()
+  def _r(self):
+    self.send_response(301)
+    self.send_header('Location', f'http://127.0.0.1:{PORT_B}' + self.path)
+    self.end_headers()
+  def log_message(self, *a): pass
+with socketserver.TCPServer(('127.0.0.1', PORT_A), H) as s: s.serve_forever()
+PY
+  python3 "$dir/redirect_server.py" "$port_a" "$port_b" >/dev/null 2>&1 &
+  echo $!
+}
+
+# Write a `node` PATH shim that delegates the 2-arg availability probe
+# to the real node binary and runs the given handler body on any other
+# call (the 4-arg render invocation). The handler receives the same
+# positional args as node itself (-e <script> <url> <output_file>).
+# Usage: make_node_shim <shim-path> <<'HANDLER'
+#          cat > "$4" <<'EOF'...EOF
+#          exit 0
+#        HANDLER
+make_node_shim() {
+  local shim="$1"
+  local real_node
+  real_node=$(command -v node)
+  mkdir -p "$(dirname "$shim")"
+  {
+    printf '#!/usr/bin/env bash\n'
+    printf 'if [ "$#" -lt 2 ] || [ "$1" != "-e" ]; then exec "%s" "$@"; fi\n' "$real_node"
+    printf 'if [ "$#" -eq 2 ]; then exec "%s" "$@"; fi\n' "$real_node"
+    cat
+  } > "$shim"
+  chmod +x "$shim"
+}
+
 # ----- Unit tests: page_type_for_url (AC1 table) -----
 
 # shellcheck source=../scripts/_lib.sh
@@ -242,7 +311,7 @@ cat > "$TMP_FIXTURE/index.html" <<'EOF'
 EOF
 python3 -m http.server "$PORT" --bind 127.0.0.1 --directory "$TMP_FIXTURE" >/dev/null 2>&1 &
 SERVER_PID=$!
-sleep 1
+wait_for_port "$PORT" || true
 REDIRECT_TEST_OUT=$("$REPO_ROOT/scripts/fetch-as-bot.sh" "http://127.0.0.1:${PORT}/index.html" "$REPO_ROOT/profiles/googlebot.json" 2>/dev/null || echo '{}')
 kill "$SERVER_PID" >/dev/null 2>&1 || true
 wait "$SERVER_PID" 2>/dev/null || true
@@ -278,7 +347,7 @@ cat > "$TMP_FIXTURE/index.html" <<'EOF'
 EOF
 python3 -m http.server "$PORT" --bind 127.0.0.1 --directory "$TMP_FIXTURE" >/dev/null 2>&1 &
 SERVER_PID=$!
-sleep 1
+wait_for_port "$PORT" || true
 if OUT=$("$REPO_ROOT/scripts/fetch-as-bot.sh" --out-dir "$FETCH_OUT_DIR" "http://127.0.0.1:${PORT}/index.html" "$REPO_ROOT/profiles/googlebot.json" 2>/dev/null); then
   BODY_FILE=$(printf '%s' "$OUT" | jq -r '.bodyFile // "missing"')
   BODY_BYTES=$(printf '%s' "$OUT" | jq -r '.bodyBytes // "missing"')
@@ -496,7 +565,7 @@ hello
 EOF
 python3 -m http.server "$PORT" --bind 127.0.0.1 --directory "$TMP_FIXTURE" >/dev/null 2>&1 &
 SERVER_PID=$!
-sleep 1
+wait_for_port "$PORT" || true
 if OUT=$("$CHECK_ROBOTS" "http://127.0.0.1:${PORT}/index.html" "GPTBot" 2>/dev/null); then
   ALLOWED=$(printf '%s' "$OUT" | jq -r '.allowed')
   assert_eq "$ALLOWED" "false" "Disallow: / blocks a matching GPTBot fetch"
@@ -550,47 +619,20 @@ fi
 
 case_begin "AC-1: check-sitemap.sh follows redirects to canonical host"
 TMP_FIXTURE=$(mktemp -d)
-# Pick two free ports
-PORT_A=$(python3 - <<'EOF'
-import socket
-s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()
-EOF
-)
-PORT_B=$(python3 - <<'EOF'
-import socket
-s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()
-EOF
-)
-# Port A redirects every request to Port B (simulates bare->www canonicalization)
-cat > "$TMP_FIXTURE/redirect_server.py" <<PY
-import http.server, socketserver, sys
-PORT_A = int(sys.argv[1]); PORT_B = int(sys.argv[2])
-class H(http.server.BaseHTTPRequestHandler):
-  def do_GET(self): self._r()
-  def do_HEAD(self): self._r()
-  def _r(self):
-    self.send_response(301)
-    self.send_header('Location', f'http://127.0.0.1:{PORT_B}' + self.path)
-    self.end_headers()
-  def log_message(self, *a): pass
-with socketserver.TCPServer(('127.0.0.1', PORT_A), H) as s: s.serve_forever()
-PY
-# Port B serves the actual sitemap
+PORT_A=$(free_port)
+PORT_B=$(free_port)
 mkdir -p "$TMP_FIXTURE/b"
-cat > "$TMP_FIXTURE/b/index.html" <<EOF
-hello
-EOF
+echo "hello" > "$TMP_FIXTURE/b/index.html"
 cat > "$TMP_FIXTURE/b/sitemap.xml" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url><loc>http://127.0.0.1:${PORT_B}/</loc></url>
 </urlset>
 EOF
-python3 "$TMP_FIXTURE/redirect_server.py" "$PORT_A" "$PORT_B" >/dev/null 2>&1 &
-REDIR_PID=$!
+REDIR_PID=$(start_redirect_server "$PORT_A" "$PORT_B" "$TMP_FIXTURE")
 ( cd "$TMP_FIXTURE/b" && python3 -m http.server "$PORT_B" --bind 127.0.0.1 ) >/dev/null 2>&1 &
 SITEMAP_PID=$!
-sleep 1
+wait_for_port "$PORT_B" || true
 if OUT=$("$CHECK_SITEMAP" "http://127.0.0.1:${PORT_A}/" 2>/dev/null); then
   EXISTS=$(printf '%s' "$OUT" | jq -r '.exists')
   URL_COUNT=$(printf '%s' "$OUT" | jq -r '.urlCount')
@@ -608,11 +650,7 @@ rm -rf "$TMP_FIXTURE"
 
 case_begin "AC-6: fetch_to_file retries on a shorter timeout than the initial attempt"
 TMP_FIXTURE=$(mktemp -d)
-HANG_PORT=$(python3 - <<'EOF'
-import socket
-s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()
-EOF
-)
+HANG_PORT=$(free_port)
 cat > "$TMP_FIXTURE/hang.py" <<PY
 import http.server, socketserver, time, sys
 PORT = int(sys.argv[1])
@@ -623,6 +661,8 @@ with socketserver.TCPServer(('127.0.0.1', PORT), H) as s: s.serve_forever()
 PY
 python3 "$TMP_FIXTURE/hang.py" "$HANG_PORT" >/dev/null 2>&1 &
 HANG_PID=$!
+# Hang server accepts connections but never returns a body — wait_for_port
+# would time out. A fixed sleep is fine here; the test itself times curl.
 sleep 1
 OUT_FILE=$(mktemp)
 START=$(date +%s)
@@ -640,34 +680,17 @@ rm -rf "$TMP_FIXTURE"
 
 case_begin "AC-8: diff-render.sh emits deltaWords on success"
 TMP_FIXTURE=$(mktemp -d)
-PORT=$(python3 - <<'EOF'
-import socket
-s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()
-EOF
-)
-# Server HTML with 3 words
+PORT=$(free_port)
 echo "<html><body>one two three</body></html>" > "$TMP_FIXTURE/index.html"
 python3 -m http.server "$PORT" --bind 127.0.0.1 --directory "$TMP_FIXTURE" >/dev/null 2>&1 &
 AC8_SERVER_PID=$!
-sleep 1
-# Shim node: availability probe delegates to real node; render writes
-# a known HTML with 8 words to the output file and exits 0.
-mkdir -p "$TMP_FIXTURE/bin"
-REAL_NODE=$(command -v node)
-cat > "$TMP_FIXTURE/bin/node" <<NODESHIM
-#!/usr/bin/env bash
-if [ "\$#" -lt 2 ] || [ "\$1" != "-e" ]; then
-  exec "$REAL_NODE" "\$@"
-fi
-if [ "\$#" -eq 2 ]; then
-  exec "$REAL_NODE" "\$@"
-fi
-cat > "\$4" <<'HTMLEOF'
+wait_for_port "$PORT" || true
+make_node_shim "$TMP_FIXTURE/bin/node" <<'SHIM'
+cat > "$4" <<'HTMLEOF'
 <html><body>alpha beta gamma delta epsilon zeta eta theta</body></html>
 HTMLEOF
 exit 0
-NODESHIM
-chmod +x "$TMP_FIXTURE/bin/node"
+SHIM
 if OUT=$(PATH="$TMP_FIXTURE/bin:$PATH" "$DIFF_RENDER" "http://127.0.0.1:${PORT}/" 2>/dev/null); then
   SKIPPED=$(printf '%s' "$OUT" | jq -r '.skipped')
   SERVER_WC=$(printf '%s' "$OUT" | jq -r '.serverWordCount')
@@ -686,11 +709,7 @@ rm -rf "$TMP_FIXTURE"
 
 case_begin "Defensive: check-llmstxt top-level exists is true when only llms.txt present"
 TMP_FIXTURE=$(mktemp -d)
-PORT=$(python3 - <<'EOF'
-import socket
-s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()
-EOF
-)
+PORT=$(free_port)
 cat > "$TMP_FIXTURE/llms.txt" <<'EOF'
 # Example Site
 
@@ -698,12 +717,10 @@ cat > "$TMP_FIXTURE/llms.txt" <<'EOF'
 
 - [Home](http://127.0.0.1/)
 EOF
-cat > "$TMP_FIXTURE/index.html" <<'EOF'
-hello
-EOF
+echo "hello" > "$TMP_FIXTURE/index.html"
 python3 -m http.server "$PORT" --bind 127.0.0.1 --directory "$TMP_FIXTURE" >/dev/null 2>&1 &
 LLMS_ONLY_PID=$!
-sleep 1
+wait_for_port "$PORT" || true
 if OUT=$("$CHECK_LLMSTXT" "http://127.0.0.1:${PORT}/" 2>/dev/null); then
   TOP_EXISTS=$(printf '%s' "$OUT" | jq -r '.exists')
   LLMS_EXISTS=$(printf '%s' "$OUT" | jq -r '.llmsTxt.exists')
@@ -720,33 +737,15 @@ rm -rf "$TMP_FIXTURE"
 
 case_begin "AC-5: diff-render.sh surfaces Playwright error detail in skip reason"
 TMP_FIXTURE=$(mktemp -d)
-PORT=$(python3 - <<'EOF'
-import socket
-s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()
-EOF
-)
+PORT=$(free_port)
 echo "<html><body>hi</body></html>" > "$TMP_FIXTURE/index.html"
 python3 -m http.server "$PORT" --bind 127.0.0.1 --directory "$TMP_FIXTURE" >/dev/null 2>&1 &
 AC5_SERVER_PID=$!
-sleep 1
-# Shim `node` so the render invocation writes a specific stderr and exits 1,
-# while the availability probe is delegated to real node.
-mkdir -p "$TMP_FIXTURE/bin"
-REAL_NODE=$(command -v node)
-cat > "$TMP_FIXTURE/bin/node" <<NODESHIM
-#!/usr/bin/env bash
-# Delegate --version and non-inline calls
-if [ "\$#" -lt 2 ] || [ "\$1" != "-e" ]; then
-  exec "$REAL_NODE" "\$@"
-fi
-# The availability probe has exactly 2 args (-e + inline script); render has 4.
-if [ "\$#" -eq 2 ]; then
-  exec "$REAL_NODE" "\$@"
-fi
+wait_for_port "$PORT" || true
+make_node_shim "$TMP_FIXTURE/bin/node" <<'SHIM'
 echo "browserType.launch: Executable doesn't exist at /tmp/fake/chromium" >&2
 exit 1
-NODESHIM
-chmod +x "$TMP_FIXTURE/bin/node"
+SHIM
 if OUT=$(PATH="$TMP_FIXTURE/bin:$PATH" "$DIFF_RENDER" "http://127.0.0.1:${PORT}/" 2>/dev/null); then
   SKIPPED=$(printf '%s' "$OUT" | jq -r '.skipped')
   REASON=$(printf '%s' "$OUT" | jq -r '.reason')
@@ -761,42 +760,18 @@ rm -rf "$TMP_FIXTURE"
 
 case_begin "AC-2: check-robots.sh follows redirects to canonical host"
 TMP_FIXTURE=$(mktemp -d)
-PORT_A=$(python3 - <<'EOF'
-import socket
-s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()
-EOF
-)
-PORT_B=$(python3 - <<'EOF'
-import socket
-s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()
-EOF
-)
-cat > "$TMP_FIXTURE/redirect_server.py" <<PY
-import http.server, socketserver, sys
-PORT_A = int(sys.argv[1]); PORT_B = int(sys.argv[2])
-class H(http.server.BaseHTTPRequestHandler):
-  def do_GET(self): self._r()
-  def do_HEAD(self): self._r()
-  def _r(self):
-    self.send_response(301)
-    self.send_header('Location', f'http://127.0.0.1:{PORT_B}' + self.path)
-    self.end_headers()
-  def log_message(self, *a): pass
-with socketserver.TCPServer(('127.0.0.1', PORT_A), H) as s: s.serve_forever()
-PY
+PORT_A=$(free_port)
+PORT_B=$(free_port)
 mkdir -p "$TMP_FIXTURE/b"
 cat > "$TMP_FIXTURE/b/robots.txt" <<'EOF'
 User-agent: GPTBot
 Disallow: /
 EOF
-cat > "$TMP_FIXTURE/b/index.html" <<'EOF'
-hello
-EOF
-python3 "$TMP_FIXTURE/redirect_server.py" "$PORT_A" "$PORT_B" >/dev/null 2>&1 &
-REDIR_PID=$!
+echo "hello" > "$TMP_FIXTURE/b/index.html"
+REDIR_PID=$(start_redirect_server "$PORT_A" "$PORT_B" "$TMP_FIXTURE")
 ( cd "$TMP_FIXTURE/b" && python3 -m http.server "$PORT_B" --bind 127.0.0.1 ) >/dev/null 2>&1 &
 ROBOTS_PID=$!
-sleep 1
+wait_for_port "$PORT_B" || true
 if OUT=$("$CHECK_ROBOTS" "http://127.0.0.1:${PORT_A}/index.html" "GPTBot" 2>/dev/null); then
   ALLOWED=$(printf '%s' "$OUT" | jq -r '.allowed')
   REPORTED_URL=$(printf '%s' "$OUT" | jq -r '.robotsUrl')
@@ -812,29 +787,8 @@ rm -rf "$TMP_FIXTURE"
 
 case_begin "AC-2: check-llmstxt.sh follows redirects to canonical host"
 TMP_FIXTURE=$(mktemp -d)
-PORT_A=$(python3 - <<'EOF'
-import socket
-s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()
-EOF
-)
-PORT_B=$(python3 - <<'EOF'
-import socket
-s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()
-EOF
-)
-cat > "$TMP_FIXTURE/redirect_server.py" <<PY
-import http.server, socketserver, sys
-PORT_A = int(sys.argv[1]); PORT_B = int(sys.argv[2])
-class H(http.server.BaseHTTPRequestHandler):
-  def do_GET(self): self._r()
-  def do_HEAD(self): self._r()
-  def _r(self):
-    self.send_response(301)
-    self.send_header('Location', f'http://127.0.0.1:{PORT_B}' + self.path)
-    self.end_headers()
-  def log_message(self, *a): pass
-with socketserver.TCPServer(('127.0.0.1', PORT_A), H) as s: s.serve_forever()
-PY
+PORT_A=$(free_port)
+PORT_B=$(free_port)
 mkdir -p "$TMP_FIXTURE/b"
 cat > "$TMP_FIXTURE/b/llms.txt" <<'EOF'
 # Example Site
@@ -843,14 +797,11 @@ cat > "$TMP_FIXTURE/b/llms.txt" <<'EOF'
 
 - [Home](http://127.0.0.1/)
 EOF
-cat > "$TMP_FIXTURE/b/index.html" <<'EOF'
-hello
-EOF
-python3 "$TMP_FIXTURE/redirect_server.py" "$PORT_A" "$PORT_B" >/dev/null 2>&1 &
-REDIR_PID=$!
+echo "hello" > "$TMP_FIXTURE/b/index.html"
+REDIR_PID=$(start_redirect_server "$PORT_A" "$PORT_B" "$TMP_FIXTURE")
 ( cd "$TMP_FIXTURE/b" && python3 -m http.server "$PORT_B" --bind 127.0.0.1 ) >/dev/null 2>&1 &
 LLMS_PID=$!
-sleep 1
+wait_for_port "$PORT_B" || true
 if OUT=$("$CHECK_LLMSTXT" "http://127.0.0.1:${PORT_A}/" 2>/dev/null); then
   LLMS_EXISTS=$(printf '%s' "$OUT" | jq -r '.llmsTxt.exists')
   LLMS_URL=$(printf '%s' "$OUT" | jq -r '.llmsTxt.url')
