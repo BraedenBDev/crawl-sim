@@ -10,7 +10,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 URL="${1:?Usage: check-llmstxt.sh <url>}"
 printf '[check-llmstxt] %s\n' "$URL" >&2
-ORIGIN=$(origin_from_url "$URL")
+# Resolve canonical origin so sites that canonicalize across hosts
+# (bare <-> www) report the llms.txt URL they actually served.
+CANONICAL_URL=$(canonical_url "$URL")
+ORIGIN=$(origin_from_url "$CANONICAL_URL")
 
 TMPDIR="${TMPDIR:-/tmp}"
 LLMS_FILE=$(mktemp "$TMPDIR/crawlsim-llms.XXXXXX")
