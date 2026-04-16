@@ -71,6 +71,23 @@ page_type_for_url() {
   esac
 }
 
+# Resolve the canonical URL after following redirects. Returns the effective
+# final URL (empty string if curl fails). Used by policy-check scripts so that
+# a bare-domain input like https://example.com/ which canonicalizes to
+# https://www.example.com/ probes robots/sitemap/llms against the canonical
+# origin, not the raw input.
+canonical_url() {
+  local url="$1"
+  local timeout="${2:-5}"
+  local effective
+  effective=$(curl -sS -I -L -o /dev/null -w '%{url_effective}' --max-time "$timeout" "$url" 2>/dev/null) || effective=""
+  if [ -n "$effective" ]; then
+    printf '%s' "$effective"
+  else
+    printf '%s' "$url"
+  fi
+}
+
 # Fetch a URL to a local file and return the HTTP status code on stdout.
 # Usage: status=$(fetch_to_file <url> <output-file> [timeout-seconds])
 # Retries once on transient failure (same SSL/DNS flake that caused #11).
