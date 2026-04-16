@@ -1,20 +1,14 @@
 {
   "url": "https://example.com/",
+  "bot": { "id": "googlebot", "name": "Googlebot", "userAgent": "Googlebot/2.1", "rendersJavaScript": true },
   "status": 200,
+  "timing": { "total": 1.2, "ttfb": 0.4 },
   "size": 12345,
   "wordCount": 450,
-  "timing": {
-    "total": 1.2,
-    "connect": 0.1,
-    "firstByte": 0.4
-  },
-  "bot": {
-    "id": "googlebot",
-    "name": "Googlebot",
-    "rendersJavaScript": true,
-    "robotsTxtToken": "Googlebot"
-  },
+  "redirectCount": 0,
   "finalUrl": "https://example.com/",
+  "redirectChain": [],
+  "headers": {},
   "bodyFile": "body-googlebot.html",
   "bodyBytes": 12345
 }
