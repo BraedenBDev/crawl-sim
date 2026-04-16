@@ -606,6 +606,38 @@ wait "$REDIR_PID" 2>/dev/null || true
 wait "$SITEMAP_PID" 2>/dev/null || true
 rm -rf "$TMP_FIXTURE"
 
+case_begin "AC-6: fetch_to_file retries on a shorter timeout than the initial attempt"
+TMP_FIXTURE=$(mktemp -d)
+HANG_PORT=$(python3 - <<'EOF'
+import socket
+s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()
+EOF
+)
+cat > "$TMP_FIXTURE/hang.py" <<PY
+import http.server, socketserver, time, sys
+PORT = int(sys.argv[1])
+class H(http.server.BaseHTTPRequestHandler):
+  def do_GET(self): time.sleep(30); self.send_response(200); self.end_headers()
+  def log_message(self, *a): pass
+with socketserver.TCPServer(('127.0.0.1', PORT), H) as s: s.serve_forever()
+PY
+python3 "$TMP_FIXTURE/hang.py" "$HANG_PORT" >/dev/null 2>&1 &
+HANG_PID=$!
+sleep 1
+OUT_FILE=$(mktemp)
+START=$(date +%s)
+# Call fetch_to_file with initial=4s, retry=2s. Before fix: retry reuses initial
+# timeout (4s), total ~8s. After fix: retry uses 2s, total ~6s.
+STATUS=$(bash -c ". '$REPO_ROOT/scripts/_lib.sh' && fetch_to_file 'http://127.0.0.1:${HANG_PORT}/' '$OUT_FILE' 4 2")
+END=$(date +%s)
+ELAPSED=$((END - START))
+assert_eq "$STATUS" "000" "hung server returns 000"
+assert_lt "$ELAPSED" "7" "fetch_to_file total time uses short retry timeout"
+kill "$HANG_PID" >/dev/null 2>&1 || true
+wait "$HANG_PID" 2>/dev/null || true
+rm -f "$OUT_FILE"
+rm -rf "$TMP_FIXTURE"
+
 case_begin "AC-5: diff-render.sh surfaces Playwright error detail in skip reason"
 TMP_FIXTURE=$(mktemp -d)
 PORT=$(python3 - <<'EOF'
