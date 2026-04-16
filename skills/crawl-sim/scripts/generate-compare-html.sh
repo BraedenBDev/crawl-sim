@@ -86,10 +86,9 @@ WINS_B_ESC=$(html_escape "$WINS_B")
 WINNER_ESC=$(html_escape "$WINNER")
 SITE_A_WINNER_CLASS=""
 SITE_B_WINNER_CLASS=""
-if [ "$SCORE_A" -ge "$SCORE_B" ]; then
+if [ "$SCORE_A" -gt "$SCORE_B" ]; then
   SITE_A_WINNER_CLASS=" winner"
-fi
-if [ "$SCORE_B" -gt "$SCORE_A" ]; then
+elif [ "$SCORE_B" -gt "$SCORE_A" ]; then
   SITE_B_WINNER_CLASS=" winner"
 fi
 PARITY_DELTA="="
