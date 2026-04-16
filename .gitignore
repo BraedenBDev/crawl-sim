@@ -6,6 +6,7 @@ crawl-sim-report.json
 .claude/
 .backups/
 .worktrees/
+package-lock.json
 
 # Secrets / credentials — defensive patterns
 .env
