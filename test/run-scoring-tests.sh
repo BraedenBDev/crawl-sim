@@ -147,10 +147,15 @@ PY
   echo $!
 }
 
-# Write a `node` PATH shim that delegates the 2-arg availability probe
-# to the real node binary and runs the given handler body on any other
-# call (the 4-arg render invocation). The handler receives the same
-# positional args as node itself (-e <script> <url> <output_file>).
+# Write a `node` PATH shim that simulates Playwright being installed
+# (the 2-arg availability probe prints "ok" unconditionally) and runs
+# the given handler body on the 4-arg render invocation. The handler
+# receives the same positional args as node (-e <script> <url> <output_file>).
+#
+# Simulating "ok" on the probe matters in CI where playwright is not
+# installed — otherwise diff-render.sh short-circuits to
+# "playwright not installed" before the render handler ever runs.
+#
 # Usage: make_node_shim <shim-path> <<'HANDLER'
 #          cat > "$4" <<'EOF'...EOF
 #          exit 0
@@ -163,7 +168,7 @@ make_node_shim() {
   {
     printf '#!/usr/bin/env bash\n'
     printf 'if [ "$#" -lt 2 ] || [ "$1" != "-e" ]; then exec "%s" "$@"; fi\n' "$real_node"
-    printf 'if [ "$#" -eq 2 ]; then exec "%s" "$@"; fi\n' "$real_node"
+    printf 'if [ "$#" -eq 2 ]; then echo "ok"; exit 0; fi\n'
     cat
   } > "$shim"
   chmod +x "$shim"
