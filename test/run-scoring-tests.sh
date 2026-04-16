@@ -12,6 +12,9 @@ BUILD_REPORT="$REPO_ROOT/scripts/build-report.sh"
 GENERATE_REPORT_HTML="$REPO_ROOT/scripts/generate-report-html.sh"
 GENERATE_COMPARE_HTML="$REPO_ROOT/scripts/generate-compare-html.sh"
 CHECK_ROBOTS="$REPO_ROOT/scripts/check-robots.sh"
+CHECK_SITEMAP="$REPO_ROOT/scripts/check-sitemap.sh"
+CHECK_LLMSTXT="$REPO_ROOT/scripts/check-llmstxt.sh"
+DIFF_RENDER="$REPO_ROOT/scripts/diff-render.sh"
 EXTRACT_JSONLD="$REPO_ROOT/scripts/extract-jsonld.sh"
 INSTALLER="$REPO_ROOT/bin/install.js"
 
@@ -485,6 +488,64 @@ else
 fi
 kill "$SERVER_PID" >/dev/null 2>&1 || true
 wait "$SERVER_PID" 2>/dev/null || true
+rm -rf "$TMP_FIXTURE"
+
+case_begin "AC-1: check-sitemap.sh follows redirects to canonical host"
+TMP_FIXTURE=$(mktemp -d)
+# Pick two free ports
+PORT_A=$(python3 - <<'EOF'
+import socket
+s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()
+EOF
+)
+PORT_B=$(python3 - <<'EOF'
+import socket
+s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()
+EOF
+)
+# Port A redirects every request to Port B (simulates bare->www canonicalization)
+cat > "$TMP_FIXTURE/redirect_server.py" <<PY
+import http.server, socketserver, sys
+PORT_A = int(sys.argv[1]); PORT_B = int(sys.argv[2])
+class H(http.server.BaseHTTPRequestHandler):
+  def do_GET(self): self._r()
+  def do_HEAD(self): self._r()
+  def _r(self):
+    self.send_response(301)
+    self.send_header('Location', f'http://127.0.0.1:{PORT_B}' + self.path)
+    self.end_headers()
+  def log_message(self, *a): pass
+with socketserver.TCPServer(('127.0.0.1', PORT_A), H) as s: s.serve_forever()
+PY
+# Port B serves the actual sitemap
+mkdir -p "$TMP_FIXTURE/b"
+cat > "$TMP_FIXTURE/b/index.html" <<EOF
+hello
+EOF
+cat > "$TMP_FIXTURE/b/sitemap.xml" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>http://127.0.0.1:${PORT_B}/</loc></url>
+</urlset>
+EOF
+python3 "$TMP_FIXTURE/redirect_server.py" "$PORT_A" "$PORT_B" >/dev/null 2>&1 &
+REDIR_PID=$!
+( cd "$TMP_FIXTURE/b" && python3 -m http.server "$PORT_B" --bind 127.0.0.1 ) >/dev/null 2>&1 &
+SITEMAP_PID=$!
+sleep 1
+if OUT=$("$CHECK_SITEMAP" "http://127.0.0.1:${PORT_A}/" 2>/dev/null); then
+  EXISTS=$(printf '%s' "$OUT" | jq -r '.exists')
+  URL_COUNT=$(printf '%s' "$OUT" | jq -r '.urlCount')
+  CONTAINS=$(printf '%s' "$OUT" | jq -r '.containsTarget')
+  assert_eq "$EXISTS" "true" "sitemap discovered via canonical redirect"
+  assert_ge "$URL_COUNT" "1" "urlCount > 0 after following canonical redirect"
+  assert_eq "$CONTAINS" "true" "containsTarget true when canonical URL appears in sitemap"
+else
+  fail "check-sitemap.sh exited non-zero against redirecting host"
+fi
+kill "$REDIR_PID" "$SITEMAP_PID" >/dev/null 2>&1 || true
+wait "$REDIR_PID" 2>/dev/null || true
+wait "$SITEMAP_PID" 2>/dev/null || true
 rm -rf "$TMP_FIXTURE"
 
 case_begin "Structured data: invalid @graph members trigger required-field violations"
