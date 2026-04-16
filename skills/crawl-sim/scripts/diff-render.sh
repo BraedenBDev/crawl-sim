@@ -104,7 +104,10 @@ node -e "
 " "$URL" "$RENDERED_HTML" 2>"$RENDER_STDERR" || {
   # Surface the first line of Playwright's stderr so the caller can
   # distinguish a launch failure from a navigation timeout from a page bug.
-  DETAIL=$(head -c 500 "$RENDER_STDERR" | tr '\n' ' ' | sed -E 's/[[:space:]]+/ /g; s/^RENDER_ERROR: //; s/^ +//; s/ +$//')
+  # Use LC_ALL=C so head -c counts bytes safely without splitting a
+  # multibyte UTF-8 sequence at the boundary (which would cause jq --arg
+  # to reject the string when emit_skipped builds the JSON).
+  DETAIL=$(LC_ALL=C head -c 500 "$RENDER_STDERR" | LC_ALL=C tr -c '\11\12\15\40-\176' ' ' | tr '\n' ' ' | sed -E 's/[[:space:]]+/ /g; s/^RENDER_ERROR: //; s/^ +//; s/ +$//')
   if [ -n "$DETAIL" ]; then
     emit_skipped "playwright render failed: $DETAIL"
   else
