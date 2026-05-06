@@ -258,9 +258,7 @@ git commit -m "fix: handle curl failures gracefully in fetch-as-bot.sh (closes #
 - Emit [botId] progress lines to stderr for parallel visibility
 - Output fetchFailed JSON instead of 0-byte file on curl error
 - compute-score.sh treats fetchFailed bots as grade F
-- New test fixture + regression assertions
-
-Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>"
+- New test fixture + regression assertions"
 ```
 
 ---
@@ -426,9 +424,7 @@ Expected: All tests pass.
 
 ```bash
 git add scripts/schema-fields.sh scripts/compute-score.sh scripts/extract-jsonld.sh test/
-git commit -m "feat: C3 — validate required fields per schema type, penalize broken schemas
-
-Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>"
+git commit -m "feat: C3 — validate required fields per schema type, penalize broken schemas"
 ```
 
 ---
@@ -567,9 +563,7 @@ git add scripts/compute-score.sh test/
 git commit -m "feat: C4 — cross-bot parity scoring category
 
 Computes content parity across bots based on word count divergence.
-Perfect parity (95%+) = 100/A, severe CSR mismatch = F.
-
-Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>"
+Perfect parity (95%+) = 100/A, severe CSR mismatch = F."
 ```
 
 ---
@@ -628,9 +622,7 @@ Run: `npm test`
 
 ```bash
 git add scripts/compute-score.sh test/run-scoring-tests.sh
-git commit -m "feat: H2 — surface diff-render skip as a warning in score output
-
-Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>"
+git commit -m "feat: H2 — surface diff-render skip as a warning in score output"
 ```
 
 ---
@@ -724,9 +716,7 @@ git add scripts/fetch-as-bot.sh test/
 git commit -m "feat: H3 — capture redirect chain in fetch-as-bot.sh output
 
 Adds redirectCount, finalUrl, and redirectChain[] to fetch JSON.
-Parsed from curl's header dump file.
-
-Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>"
+Parsed from curl's header dump file."
 ```
 
 ---
@@ -933,9 +923,7 @@ git commit -m "feat: package crawl-sim as a Claude Code plugin
 - Move SKILL.md + scripts + profiles into skills/crawl-sim/
 - Root-level symlinks preserve npm + test compat
 - SKILL.md prefers \$CLAUDE_PLUGIN_ROOT when available
-- README documents /plugin install path
-
-Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>"
+- README documents /plugin install path"
 ```
 
 ---

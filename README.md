@@ -158,7 +158,7 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md). Core rules: `curl` + `jq` only, JSON t
 
 ## Acknowledgments
 
-Bot documentation from [OpenAI](https://developers.openai.com/api/docs/bots), [Anthropic](https://privacy.claude.com), [Perplexity](https://docs.perplexity.ai/docs/resources/perplexity-crawlers), and [Google Search Central](https://developers.google.com/search/docs). Cloudflare bot classification from [Cloudflare Radar](https://radar.cloudflare.com/bots) and [Cloudflare Docs](https://developers.cloudflare.com/bots/concepts/bot/). Built with [Claude Code](https://claude.com/claude-code).
+Bot documentation from [OpenAI](https://developers.openai.com/api/docs/bots), [Anthropic](https://privacy.claude.com), [Perplexity](https://docs.perplexity.ai/docs/resources/perplexity-crawlers), and [Google Search Central](https://developers.google.com/search/docs). Cloudflare bot classification from [Cloudflare Radar](https://radar.cloudflare.com/bots) and [Cloudflare Docs](https://developers.cloudflare.com/bots/concepts/bot/).
 
 ---
 
